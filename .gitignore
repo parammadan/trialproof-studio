@@ -10,3 +10,4 @@ hpc/*.log
 hpc/.tunnel.pid
 hpc/.job
 demo_run*.json
+ui_check/

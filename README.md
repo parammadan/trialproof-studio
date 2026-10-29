@@ -75,6 +75,40 @@ home-folder reads and network access, and error line ranges.
 
 `scripts/demo_e2e.py` drives the flagship session against a live model through the HTTP API.
 
+`scripts/ui_check.py` clicks through the UI in headless Chrome with no model: open the pilot workspace, run, see
+417 validated cells, trace a cell, sign-off blocked until the review is confirmed, sign off, export, the agent's
+error when the model is offline, theme, and phone width without horizontal scroll (13 checks).
+
+## Bug-fix evaluation
+
+`scripts/fix_eval.py` measures whether the agent can repair a broken program. A known-good TEAE program gets one
+seeded bug; the agent is told only that validation found mismatches. A trial counts as fixed only if the latest run's
+independent validation passes with zero mismatches and the approved spec is unchanged. `--dry` checks, without a
+model, that the validator catches every seeded bug (12/12).
+
+| Seeded bug | Mismatched cells |
+|---|---|
+| PT counts records (`n()`) instead of subjects | 158 |
+| SOC counts records instead of subjects | 44 |
+| Treatment-emergent filter dropped | 56 |
+| Denominator from subjects with events | 417 |
+| Efficacy population in place of safety | 417 |
+| Lowest-level term (AELLT) in place of preferred term | 491 |
+
+*Warm*: a passing version exists to compare against. *Cold*: the buggy program is the first version.
+Qwen2.5-Coder-32B-Instruct-AWQ on one A100 (vLLM), 2 trials per bug and mode, 2026-10-29:
+
+| Agent version | Warm | Cold | Total |
+|---|---|---|---|
+| validation pattern + compare tool | 10/12 | 8/12 | 18/24 |
+| + spec-vs-code facts, fix nudge, in-turn context trim | 8/12 | 12/12 | 20/24 |
+| + write guards, diff in validation, output-limit nudge | 8/12 | 9/11 | 17/23 |
+| + `edit_program` (exact text replacement) | 11/12 | 11/12 | 22/24 |
+
+With 2 trials per cell, runs differ by 2–3 fixes on their own, so read the trend, not single rows. In no trial did
+validation pass a wrong table, and the approved spec never changed. Trials where the model could not be reached
+are reported as invalid and excluded.
+
 ## Data
 
 The CDISC pilot ADSL and ADAE (CDISCPILOT01) are downloaded on demand from
