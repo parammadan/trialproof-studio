@@ -26,7 +26,10 @@ scp -q "$HERE/serve.sbatch" $HOST:$D/serve.sbatch || exit 1
 # Explorer's controller now and then answers "Unexpected message received"; retry a few times
 for try in 1 2 3 4; do
   J=$(ssh $HOST "rm -f $D/ready $D/done; sbatch --parsable ${TP_SBATCH_ARGS:-} $D/serve.sbatch") && break
-  [ $try = 4 ] && exit 1; echo "sbatch failed; retrying in 30 s"; sleep 30
+  # a timed-out sbatch may still have queued the job: adopt it rather than submit a duplicate
+  sleep 30; J=$(ssh $HOST "squeue -h -u \$USER -n trialproof-vllm -o %i" | tail -1)
+  [ -n "$J" ] && { echo "sbatch reported an error but job $J was queued; using it"; break; }
+  [ $try = 4 ] && exit 1; echo "sbatch failed; retrying"
 done
 echo "$J" > "$JOBF"
 echo "submitted job $J; waiting for the model (queue + ~3 min load)"
