@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server" / "tests"))
+sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "server"), str(Path(__file__).resolve().parents[1] / "server" / "tests")]
 from test_flow import SPEC, TEAE_R  # noqa: E402
 
 p = argparse.ArgumentParser()
