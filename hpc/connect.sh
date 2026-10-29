@@ -35,7 +35,11 @@ for i in $(seq 1 360); do
   st=$(ssh $HOST "squeue -h -j $J -o %T 2>/dev/null; cat $D/ready 2>/dev/null")
   case "$st" in
     *RUNNING*" "*) break ;;
-    "") echo "job $J ended before it was ready:"; ssh $HOST "tail -25 $D/serve.$J.log"; rm -f "$JOBF"; exit 1 ;;
+    "")
+      # squeue can come back empty for a moment; only sacct saying the job is over counts as "ended"
+      state=$(ssh $HOST "sacct -n -X -j $J -o State 2>/dev/null" | tr -d ' ')
+      case "$state" in PENDING*|RUNNING*|"") sleep 10; continue ;; esac
+      echo "job $J ended before it was ready ($state):"; ssh $HOST "tail -25 $D/serve.$J.log"; ssh $HOST "scancel $J" 2>/dev/null; rm -f "$JOBF"; exit 1 ;;
   esac
   printf "\r  %-60s" "$(echo "$st" | head -1) (${i}0s)"; sleep 10
 done
