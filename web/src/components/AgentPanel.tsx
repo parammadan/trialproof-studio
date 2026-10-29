@@ -22,6 +22,7 @@ const TOOL: Record<string, { icon: typeof Bot; label: (a: Record<string, any>) =
   ask_user: { icon: MessageCircleQuestion, label: () => 'Asking you a question' },
   read_program: { icon: FileCode2, label: () => 'Reading program.R' },
   write_program: { icon: Code2, label: a => `Writing program.R${a.summary ? ` · ${a.summary}` : ''}` },
+  edit_program: { icon: Code2, label: a => `Editing program.R${a.summary ? ` · ${a.summary}` : ''}` },
   run_program: { icon: Play, label: () => 'Executing R in the sandbox' },
   get_validation: { icon: ShieldCheck, label: () => 'Reading validation results' },
   compare_with_last_passing: { icon: GitCompare, label: () => 'Comparing with the last passing version' },
@@ -204,7 +205,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
           <T.icon className={cn('size-3.5 shrink-0', failed ? 'text-bad' : 'text-fg-3')} />
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-2">{T.label(p.args ?? {})}</span>
           {r ? <span className={cn('max-w-[45%] truncate text-[11px]', failed ? 'text-bad' : 'text-fg-3')}>{typeof r.summary === 'string' ? r.summary : String(r.summary?.message ?? 'failed')}</span> : <Spinner className="size-3 text-violet" />}
-          {r && !failed && p.name === 'write_program' && <button onClick={openDiff} className="text-[11px] text-accent opacity-0 transition group-hover:opacity-100"><GitCompare className="inline size-3" /> diff</button>}
+          {r && !failed && (p.name === 'write_program' || p.name === 'edit_program') && <button onClick={openDiff} className="text-[11px] text-accent opacity-0 transition group-hover:opacity-100"><GitCompare className="inline size-3" /> diff</button>}
           {p.name === 'highlight_code' && <button onClick={() => onReveal(p.args.start_line, p.args.end_line, p.args.note)} className="text-[11px] text-accent">show</button>}
           {r && (failed ? <CircleAlert className="size-3 text-bad" /> : <Check className="size-3 text-ok" />)}
         </motion.div>

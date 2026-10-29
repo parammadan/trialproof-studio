@@ -264,3 +264,20 @@ def test_write_guards_and_diff_since_passing(env, monkeypatch):
     assert not results[2]["ok"] and "teae_summary" in results[2]["error"]
     assert results[3]["ok"] and store.latest_program(wid)["version"] == 3
     assert st.get_validation(wid, st.get_run(wid)["id"])["tables"][0]["status"] == "passed"
+
+
+def test_edit_program_exact_replace(env, monkeypatch):
+    store, st, ag, wid = env
+    st.propose_spec(wid, SPEC, "safety", by="user")
+    st.save_program(wid, TEAE_R.replace('pt = AEDECOD)', 'pt = AELLT)'), "user")
+    run_turn(ag, wid, "fix it", [
+        [("edit_program", {"summary": "x", "old_text": "group_by(", "new_text": "group_by("})],
+        [("edit_program", {"summary": "use PT", "old_text": " 7| by_pt <- ae %>% group_by(group, soc = AEBODSYS, pt = AELLT)",
+                           "new_text": "by_pt <- ae %>% group_by(group, soc = AEBODSYS, pt = AEDECOD)"})],
+        [("run_program", {})],
+        "Fixed.",
+    ], monkeypatch)
+    res = [json.loads(m["content"]) for m in store.chat(wid) if m["role"] == "tool"]
+    assert not res[0]["ok"] and "occurs 3 times" in res[0]["error"]
+    assert res[1]["ok"] and "AEDECOD" in res[1]["diff"] and store.latest_program(wid)["code"] == TEAE_R
+    assert st.get_validation(wid, st.get_run(wid)["id"])["tables"][0]["status"] == "passed"

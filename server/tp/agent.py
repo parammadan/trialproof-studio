@@ -26,7 +26,7 @@ How you work:
 1. Inspect before you write. Use list_datasets, inspect_dataset, tabulate and relationships to find the variables you need. Never guess a variable name, a flag value or a treatment label; check it.
 2. For a TEAE (treatment-emergent adverse event) summary, define the analysis as a specification with propose_spec, then STOP: the user must approve it in the Spec tab. Do not write the program for that analysis until a specification is approved. If the population, treatment variable, TEAE flag or coding variables are ambiguous, say what you found and ask (ask_user), or propose the most standard choice and explain the alternatives in the rationale.
 3. Never change an approved specification on your own. If the user asks for a different population or filter, propose a new specification version and wait for approval.
-4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate before claiming anything: get_validation (read its pattern), compare_with_last_passing (if an earlier version passed, the cause is usually in that diff), then trace_cell and read_program. Fix with the smallest change that explains the pattern; do not restructure a program that was passing. The reference is computed by an independent engine directly from the approved specification, so a mismatch means the program does not compute what the spec says; never conclude that the reference is wrong (if you believe the spec itself is wrong, say so and ask_user). Pattern facts that name a spec variable the program never mentions point at the line to fix. Investigate with tabulate and trace_cell rather than replacing the analysis program with diagnostic code.
+4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate before claiming anything: get_validation (read its pattern), compare_with_last_passing (if an earlier version passed, the cause is usually in that diff), then trace_cell and read_program. Fix with the smallest change that explains the pattern, using edit_program (an exact text replacement), not a full rewrite; do not restructure a program that was passing. The reference is computed by an independent engine directly from the approved specification, so a mismatch means the program does not compute what the spec says; never conclude that the reference is wrong (if you believe the spec itself is wrong, say so and ask_user). Pattern facts that name a spec variable the program never mentions point at the line to fix. Investigate with tabulate and trace_cell rather than replacing the analysis program with diagnostic code.
 5. Every number you state must come from a tool result in this conversation. Do not invent, estimate or round numbers that no tool returned.
 6. When explaining results, separate description (counts and percentages observed) from inference. A difference in percentages is descriptive; do not call it significant or causal unless an appropriate test was actually run, and note its assumptions.
 7. Call tools only through function calling, one step at a time, and wait for each result. Never describe what a tool returned before you have its result.
@@ -87,6 +87,10 @@ TOOLS = [
     _fn("write_program", "Replace program.R with complete new code. The user sees it stream into the editor and a diff against the previous version.",
         {"summary": {"type": "string", "description": "One line: what this version does or changes."},
          "code": {"type": "string", "description": "The complete R program."}}, ["summary", "code"]),
+    _fn("edit_program", "Change part of program.R by exact text replacement: old_text must occur exactly once in the current program. Prefer this over write_program for fixes; the user sees the diff.",
+        {"summary": {"type": "string", "description": "One line: what this change fixes."},
+         "old_text": {"type": "string", "description": "Exact text from the current program (copy it from read_program without the line numbers)."},
+         "new_text": {"type": "string", "description": "The replacement text."}}, ["summary", "old_text", "new_text"]),
     _fn("run_program", "Run the current program in the sandbox. Returns console output, errors with line numbers, emitted tables, and the independent validation of teae_summary tables."),
     _fn("get_validation", "The latest validation result for the latest run, listing mismatched cells first."),
     _fn("compare_with_last_passing", "Diff between the current program and the newest version that passed validation with no mismatches. Use it first when a previously passing analysis starts failing."),
@@ -372,6 +376,18 @@ class Agent:
                 return {"ok": True, "version": None, "code": ""}
             numbered = "\n".join(f"{i + 1:>3}| {ln}" for i, ln in enumerate(p["code"].splitlines()))
             return {"ok": True, "version": p["version"], "author": p["author"], "code": numbered}
+        if name == "edit_program":
+            prev = store.latest_program(wid)
+            if not prev:
+                return {"ok": False, "error": "there is no program yet; use write_program"}
+            old = a["old_text"]
+            if old and prev["code"].count(old) == 0:  # copied with read_program's "  5| " prefixes
+                old = re.sub(r"(?m)^\s*\d+\| ?", "", old)
+            n = prev["code"].count(old) if old else 0
+            if n != 1:
+                return {"ok": False, "error": f"old_text occurs {n} times in program v{prev['version']} (it must occur exactly once); "
+                        "call read_program and copy the exact text, without line numbers. Nothing was saved."}
+            return await self._tool(wid, "write_program", {"summary": a.get("summary", ""), "code": prev["code"].replace(old, a["new_text"])}, call_id)
         if name == "write_program":
             prev = store.latest_program(wid)
             called = sorted(t for t in TOOL_NAMES if re.search(rf"\b{t}\s*\(", a["code"]))
@@ -451,7 +467,7 @@ class Agent:
             return f"{len(r['relationships'])} dataset pair(s) share columns"
         if name == "propose_spec":
             return f"spec v{r['version']} awaiting approval"
-        if name == "write_program":
+        if name in ("write_program", "edit_program"):
             return f"program v{r['version']}, {r['lines']} lines"
         if name == "run_program":
             v = r.get("validation") or []
