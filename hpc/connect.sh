@@ -23,7 +23,11 @@ stop() {
 [ "${1:-}" = "stop" ] && { stop; exit 0; }
 
 scp -q "$HERE/serve.sbatch" $HOST:$D/serve.sbatch || exit 1
-J=$(ssh $HOST "rm -f $D/ready $D/done; sbatch --parsable ${TP_SBATCH_ARGS:-} $D/serve.sbatch") || exit 1
+# Explorer's controller now and then answers "Unexpected message received"; retry a few times
+for try in 1 2 3 4; do
+  J=$(ssh $HOST "rm -f $D/ready $D/done; sbatch --parsable ${TP_SBATCH_ARGS:-} $D/serve.sbatch") && break
+  [ $try = 4 ] && exit 1; echo "sbatch failed; retrying in 30 s"; sleep 30
+done
 echo "$J" > "$JOBF"
 echo "submitted job $J; waiting for the model (queue + ~3 min load)"
 trap 'echo; stop; exit 0' INT TERM
