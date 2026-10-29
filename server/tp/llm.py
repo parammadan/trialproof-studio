@@ -18,7 +18,7 @@ class LLMConfig:
     model: str = ""
     api_key: str = ""
     temperature: float = 0.2
-    max_tokens: int = 4096
+    max_tokens: int = 3072
 
     @classmethod
     def from_env(cls, saved: dict | None = None) -> "LLMConfig":

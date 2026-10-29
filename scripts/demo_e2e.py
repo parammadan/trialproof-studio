@@ -17,6 +17,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--api", default="http://127.0.0.1:8765")
 p.add_argument("--out", default="demo_run.json")
 p.add_argument("--timeout", type=int, default=600)
+p.add_argument("--ack", action="store_true", help="authorize sending metadata to the configured model host")
 args = p.parse_args()
 c = httpx.Client(base_url=args.api, timeout=180)
 log: list[dict] = []
@@ -75,6 +76,10 @@ def until_run(w, prompt, tries=3):
     return s
 
 
+h = c.get("/api/health").json()["llm"]
+print("model", h["model"], "at", h["base_url"])
+if args.ack:
+    c.post("/api/settings/ack", json={"host": h["host"]})
 w = c.post("/api/workspaces", json={"name": f"Demo run {time.strftime('%H:%M')}"}).json()["id"]
 print("workspace", w)
 c.post(f"/api/workspaces/{w}/datasets/pilot").raise_for_status()

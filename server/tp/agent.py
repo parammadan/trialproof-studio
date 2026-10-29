@@ -17,6 +17,8 @@ from .llm import LLMConfig, LLMError, PartialString, ToolCall, stream_chat
 from .studio import Studio, unified_diff
 
 MAX_STEPS = 14
+MAX_CALLS = 4  # tool calls run per model step
+CONTEXT_CHARS = 60000  # ~17k tokens of history, leaving room for the system prompt and output
 
 SYSTEM = """You are the AI statistical programmer inside TrialProof Studio, working with a human statistical programmer on clinical-trial analysis datasets (CDISC ADaM and others) in R.
 
@@ -27,7 +29,8 @@ How you work:
 4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate (get_validation, trace_cell, read_program) before claiming anything.
 5. Every number you state must come from a tool result in this conversation. Do not invent, estimate or round numbers that no tool returned.
 6. When explaining results, separate description (counts and percentages observed) from inference. A difference in percentages is descriptive; do not call it significant or causal unless an appropriate test was actually run, and note its assumptions.
-7. Be brief. The user sees your tool calls live; do not narrate them at length. No hidden reasoning is shown, so give short, checkable explanations.
+7. Call tools only through function calling, one step at a time, and wait for each result. Never describe what a tool returned before you have its result.
+8. Be brief. The user sees your tool calls live; do not narrate them at length. No hidden reasoning is shown, so give short, checkable explanations.
 
 R program rules:
 - Read data only with tp_read("NAME") (e.g. adsl <- tp_read("ADSL")). There is no network access and no other file access.
@@ -95,6 +98,23 @@ TOOLS = [
 PAUSE = {"propose_spec", "ask_user"}
 
 
+def _text_calls(text: str) -> list[tuple[dict, str]]:
+    """JSON objects in the text that name a known tool, e.g. {"name": "inspect_dataset", "arguments": {...}}."""
+    names = {t["function"]["name"] for t in TOOLS}
+    dec = json.JSONDecoder()
+    out, i = [], 0
+    while (i := text.find("{", i)) >= 0:
+        try:
+            obj, end = dec.raw_decode(text, i)
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        if isinstance(obj, dict) and obj.get("name") in names and isinstance(obj.get("arguments", {}), dict):
+            out.append((obj, text[i:end]))
+        i = end
+    return out
+
+
 def _clip(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n // 2] + f"\n... [{len(s) - n} chars clipped] ...\n" + s[-n // 2:]
 
@@ -133,12 +153,19 @@ class Agent:
     # ---------- the loop ----------
     def _messages(self, wid: str) -> list[dict]:
         hist = self.store.chat(wid)
-        # Keep the context small: old tool results are clipped (the model can call the tool again)
+        # Keep the context small: old tool results are clipped (the model can call the tool again), and the
+        # oldest turns are dropped once the history passes the budget, always starting at a user message
         out = []
         for i, m in enumerate(hist):
             if m["role"] == "tool" and i < len(hist) - 12:
                 m = {**m, "content": _clip(m["content"], 400)}
             out.append(m)
+        size = lambda ms: sum(len(json.dumps(m)) for m in ms)
+        while size(out) > CONTEXT_CHARS and len(out) > 2:
+            nxt = next((j for j in range(1, len(out)) if out[j]["role"] == "user"), None)
+            if nxt is None:
+                break
+            out = out[nxt:]
         ds = self.store.q("select name, nrow, ncol from datasets where ws_id=?", (wid,))
         spec = self.store.approved_spec(wid)
         prog = self.store.latest_program(wid)
@@ -188,16 +215,21 @@ class Agent:
                         for k in usage_total:
                             usage_total[k] += (d.usage or {}).get(k, 0) or 0
                 content = "".join(text_buf)
-                if not calls and "<tool_call>" in content:
-                    # Some open models emit Hermes-style calls as text the server's parser missed; parse them here
-                    for k, m in enumerate(re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, re.S)):
-                        try:
-                            obj = json.loads(m.group(1))
-                            calls[k] = ToolCall(id=f"text_{step}_{k}", name=obj["name"], arguments=json.dumps(obj.get("arguments", {})))
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-                    if calls:
-                        content = re.sub(r"<tool_call>.*?</tool_call>", "", content, flags=re.S).strip()
+                if not calls:
+                    # Some open models write their calls as text (Hermes <tool_call> tags, or bare JSON objects)
+                    # that the server's parser missed; run them as the calls the model made
+                    for k, (obj, span) in enumerate(_text_calls(content)[:MAX_CALLS]):
+                        calls[k] = ToolCall(id=f"text_{step}_{k}", name=obj["name"], arguments=json.dumps(obj.get("arguments", {})))
+                        content = content.replace(span, "")
+                    content = re.sub(r"</?tool_call>|```(?:json)?", "", content).strip() if calls else content
+                # Open models sometimes repeat one call many times in a message: run each distinct call once
+                seen_calls: set = set()
+                for k in sorted(calls):
+                    sig = (calls[k].name, calls[k].arguments)
+                    if sig in seen_calls or len(seen_calls) >= MAX_CALLS:
+                        del calls[k]
+                    else:
+                        seen_calls.add(sig)
                 tool_calls = [{"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments or "{}"}}
                               for _, c in sorted(calls.items())]
                 msg = {"role": "assistant", "content": content}
@@ -330,7 +362,11 @@ class Agent:
     @staticmethod
     def _summary(name: str, r: dict) -> str:
         if not r.get("ok", True):
-            return r.get("error") or r.get("status") or "failed"
+            e = r.get("error")
+            if isinstance(e, dict):
+                at = f" (lines {e.get('line')}-{e.get('end_line')})" if e.get("line") else ""
+                return f"run {r.get('status', 'failed')}: {e.get('message', '')}{at}"
+            return str(e or r.get("status") or "failed")
         if name == "list_datasets":
             return ", ".join(f"{d['name']} ({d['nrow']} rows)" for d in r["datasets"]) or "no datasets"
         if name == "inspect_dataset":

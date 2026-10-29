@@ -194,3 +194,10 @@ def test_runs_with_workspace_under_home(tmp_path):
             S.WS_DIR = old
     finally:
         shutil.rmtree(base, ignore_errors=True)
+
+
+def test_text_tool_calls_are_parsed():
+    from tp.agent import _text_calls
+    t = 'First:\n{"name": "inspect_dataset", "arguments": {"name": "ADSL"}}\n<tool_call>{"name": "tabulate", "arguments": {"dataset": "ADAE", "column": "TRTEMFL"}}</tool_call> and {"x": 1}'
+    got = [o["name"] for o, _ in _text_calls(t)]
+    assert got == ["inspect_dataset", "tabulate"]
