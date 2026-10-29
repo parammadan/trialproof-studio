@@ -240,3 +240,27 @@ def test_long_single_turn_fits_context(env):
     ms = ag._messages(wid)
     assert sum(len(json.dumps(m)) for m in ms[1:]) <= agent_mod.CONTEXT_CHARS
     assert ms[1]["role"] == "user" and all(json.loads(tc["function"]["arguments"]) for m in ms if m.get("tool_calls") for tc in m["tool_calls"])
+
+
+def test_write_guards_and_diff_since_passing(env, monkeypatch):
+    store, st, ag, wid = env
+    st.propose_spec(wid, SPEC, "safety", by="user")
+    st.save_program(wid, TEAE_R, "user")
+    asyncio.run(st.run(wid, by="user"))
+    bug = ('pt = AEDECOD)', 'pt = AELLT)')
+    st.save_program(wid, TEAE_R.replace(*bug), "user")
+    asyncio.run(st.run(wid, by="user"))
+    run_turn(ag, wid, "fix it", [
+        [("get_validation", {})],
+        [("write_program", {"code": 'x <- inspect_dataset("ADAE")\n' + TEAE_R})],
+        [("write_program", {"code": 'adae <- tp_read("ADAE")\ntp_emit_table(count(adae, AELLT), id = "d", title = "d", type = "generic")'})],
+        [("write_program", {"code": TEAE_R})],
+        [("run_program", {})],
+        "Fixed.",
+    ], monkeypatch)
+    results = [json.loads(m["content"]) for m in store.chat(wid) if m["role"] == "tool"]
+    assert "AELLT" in results[0]["since_last_passing"]["diff"] and results[0]["since_last_passing"]["last_passing_version"] == 1
+    assert not results[1]["ok"] and "inspect_dataset" in results[1]["error"]
+    assert not results[2]["ok"] and "teae_summary" in results[2]["error"]
+    assert results[3]["ok"] and store.latest_program(wid)["version"] == 3
+    assert st.get_validation(wid, st.get_run(wid)["id"])["tables"][0]["status"] == "passed"

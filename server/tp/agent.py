@@ -131,6 +131,7 @@ def _drop_code(args: str) -> str:
     return json.dumps(a)
 
 
+TOOL_NAMES = {t["function"]["name"] for t in TOOLS} - {"tabulate"}  # tabulate() is also base R
 SPECIAL = re.compile(r"<\|(?:im_start|im_end|endoftext)\|>")
 FIX_ASK = re.compile(r"\b(fix|correct|repair|resolve|debug)\w*", re.I)
 MAX_NUDGES = 2
@@ -271,7 +272,7 @@ class Agent:
                 if content.strip():
                     self.bus.emit(wid, "assistant_message", text=content)
                 if not tool_calls:
-                    if finish == "length":
+                    if finish == "length" and not (self._mismatches(wid) and nudges < MAX_NUDGES and FIX_ASK.search(text)):
                         self.bus.emit(wid, "agent_error", code="length", message="The model hit its output limit.")
                         break
                     # The user asked for a fix and the model stopped while validation still fails: say so (visibly)
@@ -279,7 +280,8 @@ class Agent:
                     left = self._mismatches(wid)
                     if left and nudges < MAX_NUDGES and FIX_ASK.search(text):
                         nudges += 1
-                        note = (f"[TrialProof host] The latest run (program v{left[0]}) still has {left[1]} mismatched cells. "
+                        note = ("[TrialProof host] Your last reply hit the output limit. Be brief. " if finish == "length" else "[TrialProof host] ") + (
+                                f"The latest run (program v{left[0]}) still has {left[1]} mismatched cells. "
                                 "Continue the fix: read_program, make the smallest change that explains the pattern facts, then run_program.")
                         self.store.add_chat(wid, {"role": "user", "content": note})
                         self.bus.emit(wid, "agent_nudge", text=note, program_version=left[0], mismatches=left[1])
@@ -372,6 +374,14 @@ class Agent:
             return {"ok": True, "version": p["version"], "author": p["author"], "code": numbered}
         if name == "write_program":
             prev = store.latest_program(wid)
+            called = sorted(t for t in TOOL_NAMES if re.search(rf"\b{t}\s*\(", a["code"]))
+            if called:
+                return {"ok": False, "error": f"the R program calls {', '.join(called)}, which are your tools, not R functions; "
+                        "call them as tools and keep the program plain R. Nothing was saved."}
+            emits = lambda code: bool(re.search(r"tp_emit_table\([^#\n]*teae_summary", code or ""))
+            if store.approved_spec(wid) and prev and emits(prev["code"]) and not emits(a["code"]):
+                return {"ok": False, "error": "this program no longer emits the teae_summary table, so it could not be validated. "
+                        "Keep the analysis program whole and investigate with tabulate, trace_cell and compare_with_last_passing. Nothing was saved."}
             p = st.save_program(wid, a["code"], "agent", a.get("summary", ""))
             diff = unified_diff(prev["code"], p["code"], prev["version"], p["version"]) if prev and prev["version"] != p["version"] else ""
             return {"ok": True, "version": p["version"], "lines": len(p["code"].splitlines()), "diff": _clip(diff, 2500) if diff else None}
@@ -394,7 +404,13 @@ class Agent:
                 bad = [c for c in t.get("cells", []) if c["status"] == "mismatch"]
                 tables.append({k: t[k] for k in ("table_id", "status", "passed", "mismatch", "not_verified", "pattern") if k in t}
                               | {"mismatches": bad[:12], "reason": t.get("reason")})
-            return {"ok": True, "run_id": run["id"], "spec_version": v["spec_version"], "tables": tables}
+            out = {"ok": True, "run_id": run["id"], "spec_version": v["spec_version"], "tables": tables}
+            good, cur = st.last_passing_program(wid), store.latest_program(wid)
+            if any(t["mismatch"] for t in tables) and good and cur and good["version"] != cur["version"]:
+                out["since_last_passing"] = {"last_passing_version": good["version"], "current_version": cur["version"],
+                                             "diff": _clip(unified_diff(good["code"], cur["code"], good["version"], cur["version"]), 3000),
+                                             "note": "the mismatches appeared after this change; undoing the part of it that explains the pattern is the smallest fix"}
+            return out
         if name == "compare_with_last_passing":
             good, cur = st.last_passing_program(wid), store.latest_program(wid)
             if not good:
