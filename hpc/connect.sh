@@ -16,7 +16,7 @@ stop() {
   ssh $HOST "touch $D/done" 2>/dev/null
   [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null; rm -f "$PIDF"
   if [ -f "$JOBF" ]; then
-    J=$(cat "$JOBF"); sleep 8; ssh $HOST "squeue -h -j $J >/dev/null 2>&1 && scancel $J" 2>/dev/null; rm -f "$JOBF"
+    J=$(cat "$JOBF"); sleep 45; ssh $HOST "scancel $J" 2>/dev/null; rm -f "$JOBF"
   fi
   echo "stopped"
 }

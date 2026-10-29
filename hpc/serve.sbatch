@@ -61,4 +61,6 @@ while [ ! -f $D/done ]; do
   sleep 5
 done
 [ -f $D/done ] && t "stopping: client done ($(grep -c 'POST /v1/chat/completions' $LOG) requests)"
-kill $V; wait $V 2>/dev/null; exit 0
+# vLLM can hang on SIGTERM while its engine shuts down: give it 30 s, then kill the whole group
+kill $V; for i in $(seq 30); do kill -0 $V 2>/dev/null || exit 0; sleep 1; done
+t "vllm ignored SIGTERM; killing"; pkill -9 -P $V; kill -9 $V; exit 0
