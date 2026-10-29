@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* TrialProof design tokens. Dark is the default; `.light` on <html> switches. */
+:root {
+  --bg: oklch(0.16 0.012 265);
+  --bg-deep: oklch(0.135 0.012 265);
+  --surface: oklch(0.195 0.013 265 / 0.86);
+  --surface-2: oklch(0.225 0.014 265 / 0.9);
+  --surface-3: oklch(0.265 0.015 265);
+  --line: oklch(0.32 0.014 265 / 0.75);
+  --line-soft: oklch(0.29 0.012 265 / 0.5);
+  --fg: oklch(0.95 0.006 265);
+  --fg-2: oklch(0.78 0.012 265);
+  --fg-3: oklch(0.6 0.014 265);
+  --accent: oklch(0.74 0.135 255);
+  --accent-soft: oklch(0.74 0.135 255 / 0.14);
+  --accent-fg: oklch(0.16 0.03 260);
+  --ok: oklch(0.78 0.13 168);
+  --ok-soft: oklch(0.78 0.13 168 / 0.14);
+  --bad: oklch(0.7 0.17 22);
+  --bad-soft: oklch(0.7 0.17 22 / 0.15);
+  --warn: oklch(0.82 0.13 80);
+  --warn-soft: oklch(0.82 0.13 80 / 0.14);
+  --violet: oklch(0.72 0.14 300);
+  --violet-soft: oklch(0.72 0.14 300 / 0.14);
+  --shadow: 0 1px 0 0 oklch(1 0 0 / 0.03) inset, 0 12px 32px -12px oklch(0 0 0 / 0.55);
+  --glow: radial-gradient(1200px 500px at 15% -10%, oklch(0.74 0.135 255 / 0.10), transparent 60%),
+          radial-gradient(900px 400px at 100% 0%, oklch(0.72 0.14 300 / 0.07), transparent 60%);
+  color-scheme: dark;
+}
+:root.light {
+  --bg: oklch(0.975 0.004 265);
+  --bg-deep: oklch(0.955 0.005 265);
+  --surface: oklch(1 0 0 / 0.86);
+  --surface-2: oklch(0.985 0.003 265 / 0.95);
+  --surface-3: oklch(0.94 0.006 265);
+  --line: oklch(0.88 0.008 265);
+  --line-soft: oklch(0.91 0.006 265 / 0.8);
+  --fg: oklch(0.22 0.015 265);
+  --fg-2: oklch(0.4 0.016 265);
+  --fg-3: oklch(0.55 0.014 265);
+  --accent: oklch(0.55 0.17 258);
+  --accent-soft: oklch(0.55 0.17 258 / 0.1);
+  --accent-fg: oklch(0.99 0 0);
+  --ok: oklch(0.56 0.12 165);
+  --ok-soft: oklch(0.56 0.12 165 / 0.1);
+  --bad: oklch(0.57 0.19 25);
+  --bad-soft: oklch(0.57 0.19 25 / 0.09);
+  --warn: oklch(0.62 0.13 70);
+  --warn-soft: oklch(0.7 0.13 75 / 0.14);
+  --violet: oklch(0.52 0.17 300);
+  --violet-soft: oklch(0.52 0.17 300 / 0.09);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 10px 30px -14px oklch(0.3 0.03 265 / 0.22);
+  --glow: radial-gradient(1200px 500px at 15% -10%, oklch(0.6 0.16 255 / 0.08), transparent 60%),
+          radial-gradient(900px 400px at 100% 0%, oklch(0.6 0.16 300 / 0.05), transparent 60%);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-deep: var(--bg-deep);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+  --shadow-panel: var(--shadow);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-deep);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+}
+.bg-glow { background-image: var(--glow); }
+.tabular { font-variant-numeric: tabular-nums; }
+::selection { background: var(--accent-soft); }
+
+/* Scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+
+/* Resize handles */
+[data-separator] { position: relative; background: transparent; transition: background .15s; }
+[data-separator][aria-orientation="vertical"] { width: 6px; margin: 0 -3px; z-index: 5; cursor: col-resize; }
+[data-separator][aria-orientation="horizontal"] { height: 6px; margin: -3px 0; z-index: 5; cursor: row-resize; }
+[data-separator]::after { content: ""; position: absolute; inset: 0; margin: auto; background: transparent; transition: background .15s; border-radius: 4px; }
+[data-separator][aria-orientation="vertical"]::after { width: 2px; }
+[data-separator][aria-orientation="horizontal"]::after { height: 2px; }
+[data-separator="hover"]::after, [data-separator="active"]::after, [data-separator="focus"]::after { background: var(--accent); }
+
+/* Monaco decorations */
+.tp-line-running { background: var(--accent-soft); }
+.tp-gutter-running { border-left: 3px solid var(--accent); }
+.tp-line-done { }
+.tp-gutter-done { border-left: 3px solid var(--ok); opacity: .55; }
+.tp-line-error { background: var(--bad-soft); }
+.tp-gutter-error { border-left: 3px solid var(--bad); }
+.tp-line-highlight { background: var(--warn-soft); }
+.tp-gutter-highlight { border-left: 3px solid var(--warn); }
+.tp-line-new { background: var(--violet-soft); }
+
+@keyframes tp-caret { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }
+.tp-caret::after { content: ""; display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: -2px; background: var(--accent); animation: tp-caret 1s steps(1) infinite; border-radius: 1px; }
+@keyframes tp-shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+.tp-shimmer { background: linear-gradient(90deg, transparent, var(--accent-soft), transparent); background-size: 200% 100%; animation: tp-shimmer 1.6s linear infinite; }
+@keyframes tp-flash { 0% { background: var(--violet-soft); box-shadow: inset 0 0 0 1px var(--violet) } 100% { background: transparent; box-shadow: none } }
