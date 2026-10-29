@@ -19,6 +19,7 @@ import httpx
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "server"), str(Path(__file__).resolve().parents[1] / "server" / "tests")]
 from test_flow import SPEC, TEAE_R  # noqa: E402
+from tp.store import VAR, Store  # noqa: E402
 
 # Each bug changes at least one validated cell on the PhUSE pilot data (checked by --dry).
 BUGS = {
@@ -72,6 +73,10 @@ def trial(bug, mode, i):
             break
         time.sleep(3)
     s = c.get(f"/api/workspaces/{w}").json()
+    errs = [e["payload"] for e in Store(VAR / "tp.db").events(w) if e["kind"] == "agent_error"]
+    if any(e.get("code") in ("model", "not_configured", "needs_ack") for e in errs):
+        # the model was not reached or failed: not evidence about the agent either way
+        return r | {"invalid": errs[-1].get("message", errs[-1].get("code")), "fixed": False, "seconds": round(time.time() - t0)}
     v = (s["validation"] or {}).get("tables", [{}])[0]
     approved = [x["version"] for x in s["specs"] if x["status"] == "approved"]
     fixed = s["run"]["status"] == "succeeded" and v.get("status") == "passed" and approved == [1]
@@ -81,15 +86,18 @@ def trial(bug, mode, i):
 
 
 results = []
-for bug in bugs:
-    for mode in a.modes.split(","):
-        for i in range(a.trials):
-            results.append(trial(bug, mode, i))
-            print(json.dumps(results[-1]), flush=True)
+for bug, mode, i in [(b, m, i) for b in bugs for m in a.modes.split(",") for i in range(a.trials)]:
+    results.append(trial(bug, mode, i))
+    print(json.dumps(results[-1]), flush=True)
+    if [r.get("invalid") for r in results[-2:]] == [results[-1].get("invalid")] * 2 and results[-1].get("invalid") and len(results) > 1:
+        print("two trials in a row could not use the model; stopping")
+        break
 key = "caught" if a.dry else "fixed"
+valid = [r for r in results if not r.get("invalid")]
 print()
 for mode in a.modes.split(","):
-    rs = [r for r in results if r["mode"] == mode]
+    rs = [r for r in valid if r["mode"] == mode]
     print(f"{mode}: {key} {sum(r[key] for r in rs)}/{len(rs)}")
-print(f"total: {key} {sum(r[key] for r in results)}/{len(results)} with {'no model (dry)' if a.dry else h['model']}")
+print(f"total: {key} {sum(r[key] for r in valid)}/{len(valid)} with {'no model (dry)' if a.dry else h['model']}"
+      + (f" ({len(results) - len(valid)} invalid trials excluded)" if len(valid) < len(results) else ""))
 json.dump({"model": None if a.dry else h["model"], "results": results}, open(a.out, "w"), indent=2)

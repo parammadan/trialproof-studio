@@ -1,7 +1,7 @@
 #!/bin/bash
 # Serve an open-weight model with vLLM (OpenAI-compatible, tool calling on) for TrialProof Studio on the
 # Northeastern Explorer cluster. Self-ending so the GPU never sits idle: it stops when the client writes
-# $D/done, or when no new chat request has arrived for IDLE_SECS. Submitted by hpc/connect.sh.
+# $D/done, or when no chat request has arrived or run for IDLE_SECS. Submitted by hpc/connect.sh.
 #SBATCH -J trialproof-vllm
 #SBATCH -p gpu
 #SBATCH --gres=gpu:a100:1
@@ -53,7 +53,9 @@ done
 last=0; quiet=0
 while [ ! -f $D/done ]; do
   n=$(grep -c "POST /v1/chat/completions" $LOG)
-  if [ "$n" != "$last" ]; then last=$n; quiet=0; else quiet=$((quiet + 5)); fi
+  # a request still streaming counts as activity, not idle time
+  busy=$(curl -s --max-time 3 localhost:8100/metrics | awk '/^vllm:num_requests_running/ {s += $2} END {print (s > 0)}')
+  if [ "$n" != "$last" ] || [ "$busy" = 1 ]; then last=$n; quiet=0; else quiet=$((quiet + 5)); fi
   [ $quiet -ge $IDLE_SECS ] && { t "stopping: no request for ${IDLE_SECS}s ($n served)"; break; }
   kill -0 $V 2>/dev/null || { t "vllm died"; tail -40 $LOG; exit 1; }
   sleep 5
