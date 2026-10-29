@@ -1,0 +1,47 @@
+#!/bin/bash
+# Start vLLM on Explorer, tunnel it to localhost:8100 and point TrialProof Studio at it.
+#   sh hpc/connect.sh          start, connect, keep the tunnel open until Ctrl-C (then the job stops)
+#   sh hpc/connect.sh stop     stop the server and the tunnel
+# The job also stops itself after IDLE_SECS (default 480) without a request.
+set -u
+HOST=${TP_HPC_HOST:-explorer}
+D=/scratch/madan.pa/trialproof
+PORT=${TP_LOCAL_PORT:-8100}
+API=${TP_API:-http://127.0.0.1:8765}
+HERE=$(cd "$(dirname "$0")" && pwd)
+PIDF=$HERE/.tunnel.pid
+JOBF=$HERE/.job
+
+stop() {
+  ssh $HOST "touch $D/done" 2>/dev/null
+  [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null; rm -f "$PIDF"
+  if [ -f "$JOBF" ]; then
+    J=$(cat "$JOBF"); sleep 8; ssh $HOST "squeue -h -j $J >/dev/null 2>&1 && scancel $J" 2>/dev/null; rm -f "$JOBF"
+  fi
+  echo "stopped"
+}
+[ "${1:-}" = "stop" ] && { stop; exit 0; }
+
+scp -q "$HERE/serve.sbatch" $HOST:$D/serve.sbatch || exit 1
+J=$(ssh $HOST "rm -f $D/ready $D/done; sbatch --parsable ${TP_SBATCH_ARGS:-} $D/serve.sbatch") || exit 1
+echo "$J" > "$JOBF"
+echo "submitted job $J; waiting for the model (queue + ~3 min load)"
+trap 'echo; stop; exit 0' INT TERM
+for i in $(seq 1 360); do
+  st=$(ssh $HOST "squeue -h -j $J -o %T 2>/dev/null; cat $D/ready 2>/dev/null")
+  case "$st" in
+    *RUNNING*" "*) break ;;
+    "") echo "job $J ended before it was ready:"; ssh $HOST "tail -25 $D/serve.$J.log"; rm -f "$JOBF"; exit 1 ;;
+  esac
+  printf "\r  %-60s" "$(echo "$st" | head -1) (${i}0s)"; sleep 10
+done
+NODE=$(ssh $HOST "cut -d' ' -f1 $D/ready")
+echo; echo "ready on $NODE; opening tunnel localhost:$PORT -> $NODE:8100"
+ssh -N -o ExitOnForwardFailure=yes -L $PORT:$NODE:8100 $HOST & echo $! > "$PIDF"
+sleep 3
+curl -sf --noproxy '*' http://127.0.0.1:$PORT/v1/models | head -c 300; echo
+curl -sf -X PUT "$API/api/settings/llm" -H 'Content-Type: application/json' \
+  -d "{\"base_url\":\"http://127.0.0.1:$PORT/v1\",\"model\":\"${NAME:-qwen2.5-coder-32b}\"}" >/dev/null \
+  && echo "TrialProof Studio now uses http://127.0.0.1:$PORT/v1" || echo "(start the TrialProof server, then set the endpoint in Settings)"
+echo "Ctrl-C to stop the model and free the GPU."
+wait

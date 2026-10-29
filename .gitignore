@@ -7,3 +7,6 @@ web/dist/
 data/cdisc-pilot/*.xpt
 .DS_Store
 hpc/*.log
+hpc/.tunnel.pid
+hpc/.job
+demo_run*.json

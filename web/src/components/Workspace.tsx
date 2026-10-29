@@ -30,6 +30,13 @@ export default function Workspace({ id, theme, toggleTheme, onHome }: { id: stri
   const [health, setHealth] = useState<Health | null>(null)
   const [running, setRunning] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 900)
+  const [pane, setPane] = useState<'data' | 'code' | 'agent' | 'results'>('agent')
+  useEffect(() => {
+    const on = () => setNarrow(window.innerWidth < 900)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
   const dataPanel = usePanelRef()
   const agentPanel = usePanelRef()
 
@@ -130,7 +137,7 @@ export default function Workspace({ id, theme, toggleTheme, onHome }: { id: stri
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line-soft px-2.5">
         <Tip content="All workspaces"><Button variant="ghost" size="icon" onClick={onHome} aria-label="All workspaces"><ChevronLeft /></Button></Tip>
         <Logo size={20} />
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-[30vw] sm:max-w-none">
           <div className="truncate text-[13px] font-semibold leading-tight">{snap?.workspace.name ?? '…'}</div>
         </div>
         <div className="ml-2 hidden items-center gap-1.5 md:flex">
@@ -157,15 +164,33 @@ export default function Workspace({ id, theme, toggleTheme, onHome }: { id: stri
           <div className="mx-1 h-5 w-px bg-line" />
           <button onClick={() => setSettings(true)} className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-[11px] text-fg-2 transition hover:bg-surface-3">
             <span className={cn('size-1.5 rounded-full', health?.llm.configured ? 'bg-ok' : 'bg-warn')} />
-            <span className="max-w-40 truncate">{health?.llm.configured ? health.llm.model : 'Connect a model'}</span>
+            <span className="hidden max-w-40 truncate sm:inline">{health?.llm.configured ? health.llm.model : 'Connect a model'}</span>
             <Settings2 className="size-3.5 text-fg-3" />
           </button>
-          <Tip content={<span>Toggle data panel <Kbd>{mod}</Kbd><Kbd>B</Kbd></span>}><Button variant="ghost" size="icon" onClick={() => { const p = dataPanel.current; if (p) { if (p.isCollapsed()) p.expand(); else p.collapse() } }}><PanelLeft /></Button></Tip>
-          <Tip content={<span>Toggle agent panel <Kbd>{mod}</Kbd><Kbd>J</Kbd></span>}><Button variant="ghost" size="icon" onClick={() => { const p = agentPanel.current; if (p) { if (p.isCollapsed()) p.expand(); else p.collapse() } }}><PanelBottom /></Button></Tip>
+          {!narrow && <Tip content={<span>Toggle data panel <Kbd>{mod}</Kbd><Kbd>B</Kbd></span>}><Button variant="ghost" size="icon" onClick={() => { const p = dataPanel.current; if (p) { if (p.isCollapsed()) p.expand(); else p.collapse() } }}><PanelLeft /></Button></Tip>}
+          {!narrow && <Tip content={<span>Toggle agent panel <Kbd>{mod}</Kbd><Kbd>J</Kbd></span>}><Button variant="ghost" size="icon" onClick={() => { const p = agentPanel.current; if (p) { if (p.isCollapsed()) p.expand(); else p.collapse() } }}><PanelBottom /></Button></Tip>}
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? <Sun /> : <Moon />}</Button>
         </div>
       </header>
 
+      {narrow ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 p-1.5">
+            <Shell>
+              {pane === 'data' && <DataExplorer wid={id} ws={ws} />}
+              {pane === 'code' && <EditorPane wid={id} ws={ws} code={code} setCode={setCode} dirty={dirty} tab={center} setTab={setCenter} theme={theme} onRun={runNow} onSave={save} send={send} />}
+              {pane === 'agent' && <AgentPanel wid={id} ws={ws} send={send} cancel={cancel} cell={cell} clearCell={() => setCell(null)} composerRef={composerRef} health={health}
+                  onSettings={() => setSettings(true)} onAck={loadHealth} onReveal={reveal} openSpec={() => setCenter('spec')} openDiff={() => setCenter('diff')} />}
+              {pane === 'results' && <ResultsPane wid={id} ws={ws} tab={right} setTab={setRight} cell={cell} setCell={setCell} onTrace={trace} send={send} onReveal={reveal} />}
+            </Shell>
+          </div>
+          <nav className="grid shrink-0 grid-cols-4 border-t border-line-soft">
+            {(['data', 'code', 'agent', 'results'] as const).map(p => (
+              <button key={p} onClick={() => setPane(p)} className={cn('h-11 text-[12px] capitalize', pane === p ? 'text-fg' : 'text-fg-3')}>{p}</button>
+            ))}
+          </nav>
+        </div>
+      ) : (
       <Group orientation="horizontal" className="min-h-0 flex-1 p-1.5" id="tp-main">
         <Panel id="data" panelRef={dataPanel} defaultSize="19" minSize="200px" collapsible collapsedSize="0px" className="min-w-0">
           <Shell><DataExplorer wid={id} ws={ws} /></Shell>
@@ -194,6 +219,7 @@ export default function Workspace({ id, theme, toggleTheme, onHome }: { id: stri
           </Shell>
         </Panel>
       </Group>
+      )}
 
       <SettingsDialog open={settings} onOpenChange={o => { setSettings(o); if (!o) loadHealth() }} />
     </div>
