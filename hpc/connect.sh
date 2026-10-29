@@ -37,9 +37,11 @@ for i in $(seq 1 360); do
 done
 NODE=$(ssh $HOST "cut -d' ' -f1 $D/ready")
 echo; echo "ready on $NODE; opening tunnel localhost:$PORT -> $NODE:8100"
-ssh -N -o ExitOnForwardFailure=yes -L $PORT:$NODE:8100 $HOST & echo $! > "$PIDF"
-sleep 3
-curl -sf --noproxy '*' http://127.0.0.1:$PORT/v1/models | head -c 300; echo
+# own connection, not a shared ControlMaster: a forward added to the master outlives this process
+ssh -N -o ControlMaster=no -o ControlPath=none -o ExitOnForwardFailure=yes -L $PORT:$NODE:8100 $HOST & echo $! > "$PIDF"
+sleep 5
+curl -sf --noproxy '*' http://127.0.0.1:$PORT/v1/models | head -c 300 | grep . || { echo "model not reachable on localhost:$PORT (port in use?)"; stop; exit 1; }
+echo
 curl -sf -X PUT "$API/api/settings/llm" -H 'Content-Type: application/json' \
   -d "{\"base_url\":\"http://127.0.0.1:$PORT/v1\",\"model\":\"${NAME:-qwen2.5-coder-32b}\"}" >/dev/null \
   && echo "TrialProof Studio now uses http://127.0.0.1:$PORT/v1" || echo "(start the TrialProof server, then set the endpoint in Settings)"
