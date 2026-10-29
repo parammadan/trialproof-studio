@@ -201,7 +201,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
         <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className={cn('group ml-5 flex items-center gap-2 rounded-lg border px-2.5 py-1.5', failed ? 'border-bad/30 bg-bad-soft/50' : 'border-line-soft bg-surface-2/60')}>
           <T.icon className={cn('size-3.5 shrink-0', failed ? 'text-bad' : 'text-fg-3')} />
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-2">{T.label(p.args ?? {})}</span>
-          {r ? <span className={cn('max-w-[45%] truncate text-[11px]', failed ? 'text-bad' : 'text-fg-3')}>{r.summary}</span> : <Spinner className="size-3 text-violet" />}
+          {r ? <span className={cn('max-w-[45%] truncate text-[11px]', failed ? 'text-bad' : 'text-fg-3')}>{typeof r.summary === 'string' ? r.summary : String(r.summary?.message ?? 'failed')}</span> : <Spinner className="size-3 text-violet" />}
           {r && !failed && p.name === 'write_program' && <button onClick={openDiff} className="text-[11px] text-accent opacity-0 transition group-hover:opacity-100"><GitCompare className="inline size-3" /> diff</button>}
           {p.name === 'highlight_code' && <button onClick={() => onReveal(p.args.start_line, p.args.end_line, p.args.note)} className="text-[11px] text-accent">show</button>}
           {r && (failed ? <CircleAlert className="size-3 text-bad" /> : <Check className="size-3 text-ok" />)}
@@ -288,7 +288,9 @@ function AckCard({ host, onAck }: { host: string; onAck: () => void }) {
 
 /** Minimal markdown: **bold**, `code`, bullet lines. */
 function Md({ text }: { text: string }) {
-  const lines = text.split('\n')
+  const [full, setFull] = useState(false)
+  const all = text.split('\n')
+  const lines = full ? all : all.slice(0, 30)
   return (
     <>
       {lines.map((ln, i) => {
@@ -300,6 +302,7 @@ function Md({ text }: { text: string }) {
         return bullet ? <div key={i} className="flex gap-1.5 pl-1"><span className="text-fg-3">•</span><span>{parts}</span></div>
           : <div key={i} className={cn(!ln.trim() && 'h-2', /^#+ /.test(ln) && 'font-semibold')}>{parts}</div>
       })}
+      {all.length > 30 && <button onClick={() => setFull(f => !f)} className="mt-1 text-[11px] text-accent">{full ? 'Show less' : `Show all ${all.length} lines`}</button>}
     </>
   )
 }
