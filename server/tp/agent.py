@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import traceback
 
 from . import datasets as dsets
-from .llm import LLMConfig, LLMError, PartialString, stream_chat
+from .llm import LLMConfig, LLMError, PartialString, ToolCall, stream_chat
 from .studio import Studio, unified_diff
 
 MAX_STEPS = 14
@@ -187,6 +188,16 @@ class Agent:
                         for k in usage_total:
                             usage_total[k] += (d.usage or {}).get(k, 0) or 0
                 content = "".join(text_buf)
+                if not calls and "<tool_call>" in content:
+                    # Some open models emit Hermes-style calls as text the server's parser missed; parse them here
+                    for k, m in enumerate(re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, re.S)):
+                        try:
+                            obj = json.loads(m.group(1))
+                            calls[k] = ToolCall(id=f"text_{step}_{k}", name=obj["name"], arguments=json.dumps(obj.get("arguments", {})))
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+                    if calls:
+                        content = re.sub(r"<tool_call>.*?</tool_call>", "", content, flags=re.S).strip()
                 tool_calls = [{"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments or "{}"}}
                               for _, c in sorted(calls.items())]
                 msg = {"role": "assistant", "content": content}
