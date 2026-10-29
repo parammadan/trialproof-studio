@@ -43,7 +43,7 @@ V=$!
 for i in $(seq 1 900); do
   # --noproxy: the cluster sets http_proxy, which would route a local request to the proxy
   if curl -sf --noproxy "*" http://127.0.0.1:8100/v1/models >/dev/null; then
-    echo "$(hostname) $(date +%s)" > $D/ready; t "ready after ${i}s on $(hostname)"; break
+    echo "$(hostname) $(date +%s) $SLURM_JOB_ID" > $D/ready; t "ready after ${i}s on $(hostname)"; break
   fi
   kill -0 $V 2>/dev/null || { t "vllm exited early"; tail -40 $LOG; exit 1; }
   sleep 1
@@ -56,6 +56,8 @@ while [ ! -f $D/done ]; do
   # a request still streaming counts as activity, not idle time
   busy=$(curl -s --max-time 3 localhost:8100/metrics | awk '/^vllm:num_requests_running/ {s += $2} END {print (s > 0)}')
   if [ "$n" != "$last" ] || [ "$busy" = 1 ]; then last=$n; quiet=0; else quiet=$((quiet + 5)); fi
+  # before the first request the client may still be connecting: allow FIRST_SECS for that
+  [ "$n" = 0 ] && [ $quiet -lt ${FIRST_SECS:-900} ] && { sleep 5; continue; }
   [ $quiet -ge $IDLE_SECS ] && { t "stopping: no request for ${IDLE_SECS}s ($n served)"; break; }
   kill -0 $V 2>/dev/null || { t "vllm died"; tail -40 $LOG; exit 1; }
   sleep 5

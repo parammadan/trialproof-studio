@@ -35,16 +35,16 @@ echo "$J" > "$JOBF"
 echo "submitted job $J; waiting for the model (queue + ~3 min load)"
 trap 'echo; stop; exit 0' INT TERM
 for i in $(seq 1 360); do
-  st=$(ssh $HOST "squeue -h -j $J -o %T 2>/dev/null; cat $D/ready 2>/dev/null")
-  case "$st" in
-    *RUNNING*" "*) break ;;
-    "")
-      # squeue can come back empty for a moment; only sacct saying the job is over counts as "ended"
-      state=$(ssh $HOST "sacct -n -X -j $J -o State 2>/dev/null" | tr -d ' ')
-      case "$state" in PENDING*|RUNNING*|"") sleep 10; continue ;; esac
-      echo "job $J ended before it was ready ($state):"; ssh $HOST "tail -25 $D/serve.$J.log"; ssh $HOST "scancel $J" 2>/dev/null; rm -f "$JOBF"; exit 1 ;;
-  esac
-  printf "\r  %-60s" "$(echo "$st" | head -1) (${i}0s)"; sleep 10
+  # the ready file (on shared scratch, tagged with the job id) needs no Slurm call, which can be slow
+  case "$(ssh $HOST "cat $D/ready 2>/dev/null")" in *" $J") break ;; esac
+  st=$(ssh $HOST "timeout 20 squeue -h -j $J -o %T 2>/dev/null")
+  if [ -z "$st" ]; then
+    # squeue can come back empty for a moment; only sacct saying the job is over counts as "ended"
+    state=$(ssh $HOST "timeout 20 sacct -n -X -j $J -o State 2>/dev/null" | tr -d ' ')
+    case "$state" in PENDING*|RUNNING*|"") sleep 10; continue ;; esac
+    echo "job $J ended before it was ready ($state):"; ssh $HOST "tail -25 $D/serve.$J.log"; ssh $HOST "scancel $J" 2>/dev/null; rm -f "$JOBF"; exit 1
+  fi
+  printf "\r  %-60s" "$st (${i}0s)"; sleep 10
 done
 NODE=$(ssh $HOST "cut -d' ' -f1 $D/ready")
 echo; echo "ready on $NODE; opening tunnel localhost:$PORT -> $NODE:8100"
