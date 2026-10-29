@@ -204,3 +204,39 @@ def test_text_tool_calls_are_parsed():
     t = 'First:\n{"name": "inspect_dataset", "arguments": {"name": "ADSL"}}\n<tool_call>{"name": "tabulate", "arguments": {"dataset": "ADAE", "column": "TRTEMFL"}}</tool_call> and {"x": 1}'
     got = [o["name"] for o, _ in _text_calls(t)]
     assert got == ["inspect_dataset", "tabulate"]
+
+
+def test_stop_while_failing_is_nudged_and_spec_footprint_reported(env, monkeypatch):
+    store, st, ag, wid = env
+    st.propose_spec(wid, SPEC, "safety", by="user")
+    st.save_program(wid, TEAE_R.replace('filter(SAFFL == "Y")', 'filter(EFFFL == "Y")'), "user")
+    r = asyncio.run(st.run(wid, by="user"))
+    pat = st.get_validation(wid, r["run_id"])["tables"][0]["pattern"]
+    assert any("SAFFL" in f and "never mentions" in f for f in pat) and any("EFFFL" in f for f in pat)
+    # the model describes the problem and stops; the host says so and lets it continue
+    run_turn(ag, wid, "Fix the mismatches", [
+        "The population differs.",
+        [("write_program", {"summary": "safety population", "code": TEAE_R})],
+        [("run_program", {})],
+        "Fixed: all cells match.",
+    ], monkeypatch)
+    nudges = [e for e in store.events(wid) if e["kind"] == "agent_nudge"]
+    assert len(nudges) == 1 and nudges[0]["payload"]["mismatches"] > 0
+    assert st.get_validation(wid, st.get_run(wid)["id"])["tables"][0]["status"] == "passed"
+    # a question (no fix asked) is not nudged
+    st.save_program(wid, TEAE_R.replace('filter(SAFFL == "Y")', 'filter(EFFFL == "Y")'), "user")
+    asyncio.run(st.run(wid, by="user"))
+    run_turn(ag, wid, "Why do these differ?", ["The program filters on EFFFL."], monkeypatch)
+    assert len([e for e in store.events(wid) if e["kind"] == "agent_nudge"]) == 1
+
+
+def test_long_single_turn_fits_context(env):
+    store, st, ag, wid = env
+    store.add_chat(wid, {"role": "user", "content": "fix it"})
+    for i in range(40):
+        store.add_chat(wid, {"role": "assistant", "content": "", "tool_calls": [
+            {"id": f"c{i}", "type": "function", "function": {"name": "write_program", "arguments": json.dumps({"code": TEAE_R * 3})}}]})
+        store.add_chat(wid, {"role": "tool", "tool_call_id": f"c{i}", "content": "x" * 5000})
+    ms = ag._messages(wid)
+    assert sum(len(json.dumps(m)) for m in ms[1:]) <= agent_mod.CONTEXT_CHARS
+    assert ms[1]["role"] == "user" and all(json.loads(tc["function"]["arguments"]) for m in ms if m.get("tool_calls") for tc in m["tool_calls"])

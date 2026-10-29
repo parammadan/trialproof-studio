@@ -214,6 +214,24 @@ def pattern(cells: list[dict]) -> list[str]:
     return facts
 
 
+def spec_coverage(code: str, spec: dict, columns: dict[str, set[str]]) -> list[str]:
+    """Static text match of the program against the spec: spec variables the code never names, and columns of
+    the spec's datasets the code names that the spec does not use. A fact about the text, not a diagnosis."""
+    ds = spec.get("datasets") or {}
+    roles = [("subject id", spec.get("subject_id", "USUBJID")), ("treatment variable", spec.get("treatment_var")),
+             ("SOC variable", spec.get("soc_var")), ("PT variable", spec.get("pt_var"))]
+    roles += [("population condition " + describe(c), c["var"]) for c in spec.get("population") or []]
+    roles += [("event filter " + describe(c), c["var"]) for c in spec.get("event_filter") or []]
+    words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_.]*", re.sub(r"#.*", "", code)))
+    facts = [f"the spec's {role} uses {var}, which the program never mentions" for role, var in roles if var and var not in words]
+    used = {v for _, v in roles if v}
+    for name in (ds.get("subject"), ds.get("events")):
+        extra = sorted((columns.get(name, set()) & words) - used)
+        if extra:
+            facts.append(f"the program mentions {name} column(s) {', '.join(extra)}, which the spec does not use")
+    return facts
+
+
 def code_lines(code: str, spec: dict) -> list[dict]:
     """Lines of the program that mention the spec's variables (a static text match, not a trace)."""
     terms = {spec.get("treatment_var"), spec.get("soc_var"), spec.get("pt_var"), spec.get("subject_id", "USUBJID")}

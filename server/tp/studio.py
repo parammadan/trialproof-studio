@@ -130,6 +130,9 @@ class Studio:
                                else f"no independent reference implementation for table type {t.get('type')!r}"})
                 continue
             cmp = ref.compare(self._reference(wid, spec_row["spec"]), t)
+            if cmp["mismatch"]:
+                code = self.store.program(wid, run["program_version"])["code"]
+                cmp["pattern"] += ref.spec_coverage(code, spec_row["spec"], self.columns(wid))
             tables.append({"table_id": t["id"], "status": "passed" if cmp["mismatch"] == 0 else "mismatch", **cmp})
         summary = {"validation_id": vid, "run_id": run_id, "spec_version": spec_row["version"] if spec_row else None,
                    "program_version": run["program_version"],

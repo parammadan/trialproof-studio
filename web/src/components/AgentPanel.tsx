@@ -55,6 +55,7 @@ function build(events: Ev[]): Item[] {
       case 'spec_decided': out.push({ t: 'note', ev }); break
       case 'signoff': out.push({ t: 'note', ev }); break
       case 'validation': out.push({ t: 'note', ev }); break
+      case 'agent_nudge': out.push({ t: 'note', ev }); break
     }
   }
   return out
@@ -260,6 +261,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
       else if (kind === 'program_version') node = <><User className="size-3" /> You saved v{p.version}{p.previous ? ` (+${p.added} −${p.removed})` : ''}</>
       else if (kind === 'spec_decided') node = <><ListTree className="size-3" /> Spec v{p.version} {p.status}{p.note ? `: ${p.note}` : ''}</>
       else if (kind === 'signoff') node = <><ShieldCheck className="size-3" /> {p.reviewer} {p.decision === 'approved' ? 'signed off' : 'requested changes on'} program v{p.program_version}</>
+      else if (kind === 'agent_nudge') node = <><Play className="size-3" /> Host: v{p.program_version} still has {p.mismatches} mismatched cells; asked the agent to continue the fix</>
       else if (kind === 'validation') {
         const bad = (p.tables ?? []).reduce((a: number, t: { mismatch: number }) => a + t.mismatch, 0)
         const ok = (p.tables ?? []).reduce((a: number, t: { passed: number }) => a + t.passed, 0)

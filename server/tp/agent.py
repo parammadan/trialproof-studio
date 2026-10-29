@@ -26,7 +26,7 @@ How you work:
 1. Inspect before you write. Use list_datasets, inspect_dataset, tabulate and relationships to find the variables you need. Never guess a variable name, a flag value or a treatment label; check it.
 2. For a TEAE (treatment-emergent adverse event) summary, define the analysis as a specification with propose_spec, then STOP: the user must approve it in the Spec tab. Do not write the program for that analysis until a specification is approved. If the population, treatment variable, TEAE flag or coding variables are ambiguous, say what you found and ask (ask_user), or propose the most standard choice and explain the alternatives in the rationale.
 3. Never change an approved specification on your own. If the user asks for a different population or filter, propose a new specification version and wait for approval.
-4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate before claiming anything: get_validation (read its pattern), compare_with_last_passing (if an earlier version passed, the cause is usually in that diff), then trace_cell and read_program. Fix with the smallest change that explains the pattern; do not restructure a program that was passing.
+4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate before claiming anything: get_validation (read its pattern), compare_with_last_passing (if an earlier version passed, the cause is usually in that diff), then trace_cell and read_program. Fix with the smallest change that explains the pattern; do not restructure a program that was passing. The reference is computed by an independent engine directly from the approved specification, so a mismatch means the program does not compute what the spec says; never conclude that the reference is wrong (if you believe the spec itself is wrong, say so and ask_user). Pattern facts that name a spec variable the program never mentions point at the line to fix. Investigate with tabulate and trace_cell rather than replacing the analysis program with diagnostic code.
 5. Every number you state must come from a tool result in this conversation. Do not invent, estimate or round numbers that no tool returned.
 6. When explaining results, separate description (counts and percentages observed) from inference. A difference in percentages is descriptive; do not call it significant or causal unless an appropriate test was actually run, and note its assumptions.
 7. Call tools only through function calling, one step at a time, and wait for each result. Never describe what a tool returned before you have its result.
@@ -120,6 +120,22 @@ def _clip(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n // 2] + f"\n... [{len(s) - n} chars clipped] ...\n" + s[-n // 2:]
 
 
+def _drop_code(args: str) -> str:
+    """Replace the code of an old write_program call (kept as valid JSON) to save context."""
+    try:
+        a = json.loads(args or "{}")
+    except json.JSONDecodeError:
+        return "{}"
+    if isinstance(a, dict) and len(a.get("code") or "") > 300:
+        a["code"] = "[older program text omitted; call read_program for the current version]"
+    return json.dumps(a)
+
+
+SPECIAL = re.compile(r"<\|(?:im_start|im_end|endoftext)\|>")
+FIX_ASK = re.compile(r"\b(fix|correct|repair|resolve|debug)\w*", re.I)
+MAX_NUDGES = 2
+
+
 class Agent:
     def __init__(self, studio: Studio):
         self.studio = studio
@@ -167,7 +183,19 @@ class Agent:
             if nxt is None:
                 break
             out = out[nxt:]
-        ds = self.store.q("select name, nrow, ncol from datasets where ws_id=?", (wid,))
+        # A single long turn has only one user message to cut at: clip its older tool results and program
+        # bodies, keeping the newest few intact
+        for keep in (6, 3, 1):
+            if size(out) <= CONTEXT_CHARS:
+                break
+            for i, m in enumerate(out[:-keep]):
+                if m["role"] == "tool":
+                    out[i] = {**m, "content": _clip(m["content"], 300)}
+                elif m.get("tool_calls"):
+                    out[i] = {**m, "content": _clip(m.get("content") or "", 600),
+                              "tool_calls": [{**tc, "function": {**tc["function"], "arguments": _drop_code(tc["function"]["arguments"])}}
+                                             for tc in m["tool_calls"]]}
+        ds =self.store.q("select name, nrow, ncol from datasets where ws_id=?", (wid,))
         spec = self.store.approved_spec(wid)
         prog = self.store.latest_program(wid)
         state = (f"Workspace state now: datasets {[f'{d['name']} ({d['nrow']}x{d['ncol']})' for d in ds]}; "
@@ -192,14 +220,17 @@ class Agent:
         t0 = time.time()
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0}
         pending_calls: list[dict] = []
+        nudges = 0
         try:
             for step in range(MAX_STEPS):
                 text_buf, calls, code_streams = [], {}, {}
                 finish = None
                 async for d in stream_chat(cfg, self._messages(wid), TOOLS):
                     if d.kind == "text":
-                        text_buf.append(d.text)
-                        self.bus.emit(wid, "assistant_delta", text=d.text)
+                        piece = SPECIAL.sub("", d.text)
+                        text_buf.append(piece)
+                        if piece:
+                            self.bus.emit(wid, "assistant_delta", text=piece)
                     elif d.kind == "tool_start":
                         calls[d.index] = d.call
                         if d.call.name:
@@ -242,6 +273,17 @@ class Agent:
                 if not tool_calls:
                     if finish == "length":
                         self.bus.emit(wid, "agent_error", code="length", message="The model hit its output limit.")
+                        break
+                    # The user asked for a fix and the model stopped while validation still fails: say so (visibly)
+                    # and let it continue, at most MAX_NUDGES times per turn
+                    left = self._mismatches(wid)
+                    if left and nudges < MAX_NUDGES and FIX_ASK.search(text):
+                        nudges += 1
+                        note = (f"[TrialProof host] The latest run (program v{left[0]}) still has {left[1]} mismatched cells. "
+                                "Continue the fix: read_program, make the smallest change that explains the pattern facts, then run_program.")
+                        self.store.add_chat(wid, {"role": "user", "content": note})
+                        self.bus.emit(wid, "agent_nudge", text=note, program_version=left[0], mismatches=left[1])
+                        continue
                     break
                 pending_calls = list(tool_calls)
                 paused = False
@@ -284,6 +326,12 @@ class Agent:
             self.bus.emit(wid, "agent_error", code="internal", message=f"{type(e).__name__}: {e}")
         finally:
             self.bus.emit(wid, "agent_end", seconds=round(time.time() - t0, 1), usage=usage_total)
+
+    def _mismatches(self, wid: str) -> tuple[int, int] | None:
+        run = self.studio.get_run(wid)
+        v = self.studio.get_validation(wid, run["id"]) if run else None
+        n = sum(t.get("mismatch", 0) for t in (v or {}).get("tables", []))
+        return (run["program_version"], n) if n else None
 
     # ---------- tools ----------
     async def _tool(self, wid: str, name: str, a: dict, call_id: str) -> dict:
