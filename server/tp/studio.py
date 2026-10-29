@@ -145,6 +145,16 @@ class Studio:
             return None
         return {**json.loads(v["summary"]), "tables": json.loads(v["cells"])}
 
+    def last_passing_program(self, wid: str) -> dict | None:
+        """The newest program version whose latest validation had verified tables and no mismatches."""
+        rows = self.store.q("""select v.summary, r.program_version from validations v join runs r on r.id = v.run_id
+                               where v.ws_id=? order by v.created_at desc""", (wid,))
+        for r in rows:
+            tabs = json.loads(r["summary"])["tables"]
+            if tabs and all(t["status"] == "passed" for t in tabs):
+                return self.store.program(wid, r["program_version"])
+        return None
+
     # ---------- lineage ----------
     def trace(self, wid: str, run_id: str, table_id: str, level: str, soc: str | None, pt: str | None, group: str) -> dict:
         run = self.get_run(wid, run_id)

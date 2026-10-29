@@ -418,6 +418,11 @@ function Verification({ wid, ws, onTrace, send }: { wid: string; ws: WorkspaceSt
               Table <span className="font-mono text-fg-2">{t.table_id}</span> from program v{val.program_version}, compared against a reference recomputed in Python from
               specification v{val.spec_version} (independent of the R code). {t.reason}
             </div>
+            {(t.pattern?.length ?? 0) > 0 && (
+              <ul className="space-y-0.5 rounded-lg border border-bad/25 bg-bad-soft/40 px-3 py-2 text-[11px] text-fg-2">
+                {t.pattern!.map(f => <li key={f} className="flex gap-1.5"><span className="text-bad">•</span>{f}</li>)}
+              </ul>
+            )}
             {t.status !== 'not_verified' && (
               <>
                 <div className="flex items-center gap-1.5">

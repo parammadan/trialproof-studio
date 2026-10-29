@@ -26,7 +26,7 @@ How you work:
 1. Inspect before you write. Use list_datasets, inspect_dataset, tabulate and relationships to find the variables you need. Never guess a variable name, a flag value or a treatment label; check it.
 2. For a TEAE (treatment-emergent adverse event) summary, define the analysis as a specification with propose_spec, then STOP: the user must approve it in the Spec tab. Do not write the program for that analysis until a specification is approved. If the population, treatment variable, TEAE flag or coding variables are ambiguous, say what you found and ask (ask_user), or propose the most standard choice and explain the alternatives in the rationale.
 3. Never change an approved specification on your own. If the user asks for a different population or filter, propose a new specification version and wait for approval.
-4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate (get_validation, trace_cell, read_program) before claiming anything.
+4. Write the complete program with write_program (it replaces the file; the user sees a diff). Then run_program. If it fails, read the error and its line numbers, fix the code and rerun. If the run's validation shows mismatches, investigate before claiming anything: get_validation (read its pattern), compare_with_last_passing (if an earlier version passed, the cause is usually in that diff), then trace_cell and read_program. Fix with the smallest change that explains the pattern; do not restructure a program that was passing.
 5. Every number you state must come from a tool result in this conversation. Do not invent, estimate or round numbers that no tool returned.
 6. When explaining results, separate description (counts and percentages observed) from inference. A difference in percentages is descriptive; do not call it significant or causal unless an appropriate test was actually run, and note its assumptions.
 7. Call tools only through function calling, one step at a time, and wait for each result. Never describe what a tool returned before you have its result.
@@ -89,6 +89,7 @@ TOOLS = [
          "code": {"type": "string", "description": "The complete R program."}}, ["summary", "code"]),
     _fn("run_program", "Run the current program in the sandbox. Returns console output, errors with line numbers, emitted tables, and the independent validation of teae_summary tables."),
     _fn("get_validation", "The latest validation result for the latest run, listing mismatched cells first."),
+    _fn("compare_with_last_passing", "Diff between the current program and the newest version that passed validation with no mismatches. Use it first when a previously passing analysis starts failing."),
     _fn("trace_cell", "Lineage of one result cell from the independent reference: population, denominator, numerator definition, contributing subjects and records, and program lines that mention the variables.",
         {"table_id": {"type": "string"}, "level": {"type": "string", "enum": ["any", "soc", "pt"]},
          "soc": {"type": "string"}, "pt": {"type": "string"}, "group": {"type": "string"}}, ["table_id", "level", "group"]),
@@ -343,9 +344,18 @@ class Agent:
             tables = []
             for t in v["tables"]:
                 bad = [c for c in t.get("cells", []) if c["status"] == "mismatch"]
-                tables.append({k: t[k] for k in ("table_id", "status", "passed", "mismatch", "not_verified") if k in t}
-                              | {"mismatches": bad[:30], "reason": t.get("reason")})
+                tables.append({k: t[k] for k in ("table_id", "status", "passed", "mismatch", "not_verified", "pattern") if k in t}
+                              | {"mismatches": bad[:12], "reason": t.get("reason")})
             return {"ok": True, "run_id": run["id"], "spec_version": v["spec_version"], "tables": tables}
+        if name == "compare_with_last_passing":
+            good, cur = st.last_passing_program(wid), store.latest_program(wid)
+            if not good:
+                return {"ok": True, "note": "no version has passed validation yet"}
+            if good["version"] == cur["version"]:
+                return {"ok": True, "note": f"the current program v{cur['version']} is the last passing version"}
+            return {"ok": True, "last_passing_version": good["version"], "last_passing_author": good["author"],
+                    "current_version": cur["version"], "current_author": cur["author"],
+                    "diff": _clip(unified_diff(good["code"], cur["code"], good["version"], cur["version"]), 4000)}
         if name == "trace_cell":
             run = st.get_run(wid)
             t = st.trace(wid, run["id"], a["table_id"], a["level"], a.get("soc"), a.get("pt"), a["group"])
@@ -383,6 +393,8 @@ class Agent:
             v = r.get("validation") or []
             vs = "; ".join(f"{t['table_id']}: {t['passed']} passed, {t['mismatch']} mismatch" for t in v)
             return f"run {r['status']}" + (f"; {vs}" if vs else "")
+        if name == "compare_with_last_passing":
+            return f"diff v{r['last_passing_version']} → v{r['current_version']}" if r.get("diff") else r.get("note", "")
         if name == "get_validation":
             return "; ".join(f"{t['table_id']}: {t['status']}" for t in r["tables"]) if r.get("tables") else "no validation yet"
         if name == "trace_cell":

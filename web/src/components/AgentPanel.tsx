@@ -24,6 +24,7 @@ const TOOL: Record<string, { icon: typeof Bot; label: (a: Record<string, any>) =
   write_program: { icon: Code2, label: a => `Writing program.R${a.summary ? ` · ${a.summary}` : ''}` },
   run_program: { icon: Play, label: () => 'Executing R in the sandbox' },
   get_validation: { icon: ShieldCheck, label: () => 'Reading validation results' },
+  compare_with_last_passing: { icon: GitCompare, label: () => 'Comparing with the last passing version' },
   trace_cell: { icon: Target, label: a => `Tracing ${a.level === 'any' ? 'any TEAE' : a.level === 'soc' ? a.soc : a.pt} · ${a.group}` },
   highlight_code: { icon: Braces, label: a => `Highlighting lines ${a.start_line}–${a.end_line}` },
 }

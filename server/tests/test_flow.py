@@ -116,6 +116,9 @@ def test_full_flow(env, monkeypatch):
     assert t["status"] == "mismatch" and t["mismatch"] > 0
     bad = [c for c in st.get_validation(wid, r["run_id"])["tables"][0]["cells"] if c["status"] == "mismatch"]
     assert all(c["level"] == "pt" and c["n"] > c["ref_n"] for c in bad)
+    pat = st.get_validation(wid, r["run_id"])["tables"][0]["pattern"]
+    assert "at level 'pt'" in pat[0] and "program n < reference n in 0" in pat[1] and "agree" in pat[2]
+    assert st.last_passing_program(wid)["version"] == 1
     # 4. lineage of one cell
     tr = st.trace(wid, r["run_id"], "teae", "any", None, None, "Placebo")
     assert tr["reference"]["n"] == 65 and tr["reference"]["N"] == 86 and len(tr["reference"]["subjects"]) == 65

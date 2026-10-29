@@ -184,7 +184,34 @@ def compare(ref: dict, table: dict) -> dict:
     for c in out_cells:
         counts[c["status"]] += 1
     return {"cells": out_cells, "passed": counts["passed"], "mismatch": counts["mismatch"],
-            "not_verified": counts["not_verified"], "groups": ref["groups"], "population_n": ref["population_n"]}
+            "not_verified": counts["not_verified"], "groups": ref["groups"], "population_n": ref["population_n"],
+            "pattern": pattern(out_cells)}
+
+
+def pattern(cells: list[dict]) -> list[str]:
+    """Plain facts about where and how the mismatches occur (no guesses about the cause)."""
+    bad = [c for c in cells if c["status"] == "mismatch"]
+    if not bad:
+        return []
+    facts = []
+    by_level = defaultdict(int)
+    for c in bad:
+        by_level[c["level"]] += 1
+    facts.append(f"{len(bad)} mismatched cells: " + ", ".join(f"{n} at level {lv!r}" for lv, n in sorted(by_level.items())))
+    both = [c for c in bad if c.get("n") is not None and c.get("ref_n") is not None]
+    if both:
+        hi = sum(1 for c in both if c["n"] > c["ref_n"])
+        lo = sum(1 for c in both if c["n"] < c["ref_n"])
+        facts.append(f"numerator: program n > reference n in {hi}, program n < reference n in {lo}, of {len(both)} comparable cells")
+        dN = sum(1 for c in both if c.get("N") != c.get("ref_N"))
+        facts.append("denominators (N) agree in every mismatched cell" if dN == 0 else f"denominator N differs in {dN} cells")
+    missing = sum(1 for c in bad if c.get("n") is None)
+    extra = sum(1 for c in bad if c.get("ref_N") is None)
+    if missing:
+        facts.append(f"{missing} reference cells with events are missing from the program output")
+    if extra:
+        facts.append(f"{extra} program cells have a group that is not in the reference population")
+    return facts
 
 
 def code_lines(code: str, spec: dict) -> list[dict]:
