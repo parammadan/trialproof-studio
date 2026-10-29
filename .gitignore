@@ -1,0 +1,9 @@
+var/
+server/.venv/
+__pycache__/
+.pytest_cache/
+web/node_modules/
+web/dist/
+data/cdisc-pilot/*.xpt
+.DS_Store
+hpc/*.log

@@ -1,0 +1,9 @@
+;; macOS sandbox profile for user/agent R programs: no network, no reads of the home folder outside
+;; the workspace, writes only inside the run directory.
+(version 1)
+(allow default)
+(deny network*)
+(deny file-write*)
+(allow file-write* (subpath (param "RUN_DIR")) (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))
+(deny file-read* (subpath (param "HOME_DIR")))
+(allow file-read* (subpath (param "RUN_DIR")) (subpath (param "DATA_DIR")) (subpath (param "R_DIR")))
