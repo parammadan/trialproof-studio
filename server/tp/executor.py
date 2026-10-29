@@ -58,7 +58,7 @@ class Executor:
     async def run(self, ws_path: Path, code: str, on_event: Callable[[str, dict], Awaitable[None] | None]) -> RunResult:
         run_id = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
         run_dir = (ws_path / "runs" / run_id).resolve()
-        (run_dir / "out").mkdir(parents=True)
+        (run_dir / "out" / "tables").mkdir(parents=True)
         (run_dir / "tmp").mkdir()
         (run_dir / "program.R").write_text(code)
         data_dir = (ws_path / "datasets").resolve()
@@ -86,6 +86,8 @@ class Executor:
                                                            "line": int(parts[2]), "end_line": int(parts[3])}))
                     elif parts and parts[0] == "BEGIN":
                         await _maybe(on_event("run_step", {"run_id": run_id, "step": 0, "total": int(parts[1])}))
+                    continue
+                if text.startswith("OMP: Warning #179"):  # libomp probing /tmp shared memory; harmless
                     continue
                 console.append(text)
                 await _maybe(on_event("run_output", {"run_id": run_id, "text": text, "stream": "stderr" if is_err else "stdout"}))

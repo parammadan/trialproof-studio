@@ -170,3 +170,27 @@ def test_partial_string_decodes_streamed_json():
     ps = PartialString("code")
     got = "".join(ps.feed(s[i:i + 3]) for i in range(0, len(s), 3))
     assert got == code
+
+
+def test_runs_with_workspace_under_home(tmp_path):
+    """The real workspaces live under the home folder, which the sandbox denies reading."""
+    import pathlib, shutil, tempfile
+    base = pathlib.Path(tempfile.mkdtemp(dir=pathlib.Path(__file__).resolve().parents[2] / "var"))
+    try:
+        store = Store(base / "t.db")
+        import tp.store as S
+        old = S.WS_DIR
+        S.WS_DIR = base / "ws"
+        try:
+            st = Studio(store, Bus(store), Executor())
+            wid = store.create_workspace("home")["id"]
+            asyncio.run(dsets.load_pilot(store, wid))
+            st.propose_spec(wid, SPEC, "", by="user")
+            st.save_program(wid, TEAE_R, "user")
+            r = asyncio.run(st.run(wid, by="user"))
+            assert r["status"] == "succeeded", r["console"]
+            assert r["validation"]["tables"][0]["mismatch"] == 0
+        finally:
+            S.WS_DIR = old
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
