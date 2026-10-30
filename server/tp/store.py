@@ -3,6 +3,7 @@ the event log (every action in a workspace, replayed to the UI and exported as t
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -10,7 +11,7 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-VAR = ROOT / "var"
+VAR = Path(os.environ["TP_VAR"]).resolve() if os.environ.get("TP_VAR") else ROOT / "var"
 WS_DIR = VAR / "workspaces"
 
 SCHEMA = """
