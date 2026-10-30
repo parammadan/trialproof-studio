@@ -43,6 +43,8 @@ R program rules:
     n      number of distinct subjects with the event in that group
     N      number of subjects in the group's population denominator (from the subject-level dataset, not from the AE dataset)
     pct    100 * n / N (optional)
+  Emit ONE teae_summary table that holds all three levels: build the any, soc and pt pieces, then bind_rows() them.
+  Add constant columns with mutate() (e.g. mutate(level = "soc", pt = NA_character_)); select() cannot create columns.
   Count subjects, not events (n_distinct of the subject id). Take the denominator from the population in ADSL so that groups with no events still have N. Apply the population to the AE records too (join to the population subjects).
 - Other outputs use type = "generic"; they are shown but not independently verified.
 - Top-level expressions are executed one at a time and errors are reported with their line range.
@@ -139,6 +141,7 @@ TOOL_NAMES = {t["function"]["name"] for t in TOOLS} - {"tabulate"}  # tabulate()
 SPECIAL = re.compile(r"<\|(?:im_start|im_end|endoftext)\|>")
 FIX_ASK = re.compile(r"\b(fix|correct|repair|resolve|debug)\w*", re.I)
 MAX_NUDGES = 2
+SPEC_BLOCK = re.compile(r'```(?:json)?\s*\{[^`]*"type"\s*:\s*"teae_summary"[^`]*"treatment_var"', re.S)
 
 
 class Agent:
@@ -203,9 +206,17 @@ class Agent:
         ds =self.store.q("select name, nrow, ncol from datasets where ws_id=?", (wid,))
         spec = self.store.approved_spec(wid)
         prog = self.store.latest_program(wid)
+        run = self.studio.get_run(wid)
+        val = self.studio.get_validation(wid, run["id"]) if run else None
+        tabs = (val or {}).get("tables") or []
+        latest = (f"latest run: program v{run['program_version']} ({run['status']})"
+                  + (", validation " + "; ".join(f"{t['table_id']}: {t['status']}, {t.get('passed', 0)} passed, {t.get('mismatch', 0)} mismatched"
+                                                 for t in tabs) if tabs else "") if run else "latest run: none")
+        # the user can edit and run outside the chat, so state the current facts on every step, not only in history
         state = (f"Workspace state now: datasets {[f'{d['name']} ({d['nrow']}x{d['ncol']})' for d in ds]}; "
                  f"approved spec: {'v' + str(spec['version']) if spec else 'none'}; "
-                 f"program: {'v' + str(prog['version']) + ' by ' + prog['author'] if prog else 'none'}.")
+                 f"program: {'v' + str(prog['version']) + ' by ' + prog['author'] if prog else 'none'}; {latest}. "
+                 "Earlier tool results in this conversation may be out of date.")
         return [{"role": "system", "content": SYSTEM + "\n" + state}] + out
 
     async def _turn(self, wid: str, text: str, context: dict | None):
@@ -279,6 +290,14 @@ class Agent:
                     if finish == "length" and not (self._mismatches(wid) and nudges < MAX_NUDGES and FIX_ASK.search(text)):
                         self.bus.emit(wid, "agent_error", code="length", message="The model hit its output limit.")
                         break
+                    # The model wrote a specification as text instead of proposing it: nothing reached the user
+                    if nudges < MAX_NUDGES and SPEC_BLOCK.search(content) and not self._spec_this_turn(wid, t0):
+                        nudges += 1
+                        note = ("[TrialProof host] You wrote a specification in your message, but nothing was proposed. "
+                                "Call the propose_spec tool with that spec and a short rationale; the user approves it in the Spec tab.")
+                        self.store.add_chat(wid, {"role": "user", "content": note})
+                        self.bus.emit(wid, "agent_nudge", text=note, reason="spec_as_text")
+                        continue
                     # The user asked for a fix and the model stopped while validation still fails: say so (visibly)
                     # and let it continue, at most MAX_NUDGES times per turn
                     left = self._mismatches(wid)
@@ -332,6 +351,11 @@ class Agent:
             self.bus.emit(wid, "agent_error", code="internal", message=f"{type(e).__name__}: {e}")
         finally:
             self.bus.emit(wid, "agent_end", seconds=round(time.time() - t0, 1), usage=usage_total)
+
+    _last_run_error: dict = {}
+
+    def _spec_this_turn(self, wid: str, since: float) -> bool:
+        return bool(self.store.one("select 1 from specs where ws_id=? and created_at>=?", (wid, since)))
 
     def _mismatches(self, wid: str) -> tuple[int, int] | None:
         run = self.studio.get_run(wid)
@@ -390,6 +414,9 @@ class Agent:
             return await self._tool(wid, "write_program", {"summary": a.get("summary", ""), "code": prev["code"].replace(old, a["new_text"])}, call_id)
         if name == "write_program":
             prev = store.latest_program(wid)
+            if not store.approved_spec(wid) and store.one("select 1 from specs where ws_id=? and status='proposed'", (wid,)):
+                return {"ok": False, "error": "a specification is still awaiting the user's decision in the Spec tab; "
+                        "do not write the program until it is approved. Nothing was saved."}
             called = sorted(t for t in TOOL_NAMES if re.search(rf"\b{t}\s*\(", a["code"]))
             if called:
                 return {"ok": False, "error": f"the R program calls {', '.join(called)}, which are your tools, not R functions; "
@@ -409,6 +436,12 @@ class Agent:
                    "error": r["error"], "warnings": r["warnings"][:5], "console_tail": r["console"][-2500:], "tables": tables}
             if r.get("validation"):
                 out["validation"] = r["validation"]["tables"]
+            prev_err = self._last_run_error.get(wid)
+            msg = (r.get("error") or {}).get("message") if isinstance(r.get("error"), dict) else None
+            if msg and msg == prev_err:
+                out["note"] = ("this is the same error as the previous run, so the last change did not address it. "
+                               "Read the lines in the error range again and change the expression that causes it.")
+            self._last_run_error[wid] = msg
             return out
         if name == "get_validation":
             run = st.get_run(wid)
