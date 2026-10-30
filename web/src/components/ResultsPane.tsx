@@ -67,7 +67,7 @@ function Results({ ws, cell, setCell, onTrace, send, onReveal }: {
         <Tip content={<div className="space-y-0.5 font-mono text-[10px]"><div>program {run.provenance.program_sha256}</div>{Object.entries(run.provenance.datasets).map(([k, v]) => <div key={k}>{k} {v}</div>)}<div>{run.provenance.r_version}</div></div>}>
           <span className="cursor-help underline decoration-dotted underline-offset-2">provenance</span>
         </Tip>
-        <span>·</span><span>{run.provenance.backend === 'sandbox' ? 'macOS sandbox' : run.provenance.backend}, no network</span>
+        <span>·</span><span>{run.provenance.isolation ?? (run.provenance.backend === 'sandbox' ? 'macOS sandbox, no network' : run.provenance.backend)}</span>
       </div>
 
       {err && (

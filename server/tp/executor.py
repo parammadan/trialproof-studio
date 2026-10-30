@@ -4,6 +4,9 @@ workspace datasets and the R toolchain, write only inside its run directory, and
 Backends:
   sandbox  macOS sandbox-exec with r/sandbox.sb (default on macOS)
   docker   `docker run --network none` with the run and data directories mounted (TP_EXECUTOR=docker)
+  rlimit   Linux, for hosts without Docker or sandbox-exec (e.g. a Hugging Face Space): CPU, memory, process and
+           file-size limits, an empty environment, and no network when `unshare -rn` is permitted. Weaker than the
+           other two (the program can read files the server user can read), so it is meant for public demo data only.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from .datasets import sha256
 R_DIR = Path(__file__).resolve().parents[1] / "r"
 TIMEOUT = int(os.environ.get("TP_RUN_TIMEOUT", "120"))
 BACKEND = os.environ.get("TP_EXECUTOR", "sandbox" if sys.platform == "darwin" else "docker")
+MEM_BYTES = int(os.environ.get("TP_RUN_MEMORY_MB", "2048")) * 2**20
 DOCKER_IMAGE = os.environ.get("TP_DOCKER_IMAGE", "rocker/tidyverse:4.4.1")
 
 
@@ -45,9 +49,40 @@ def _command(run_dir: Path, data_dir: Path) -> list[str]:
                 "-v", f"{run_dir}:/run", "-v", f"{data_dir}:/data:ro", "-v", f"{R_DIR}:/tp:ro",
                 "-e", "TP_DATA_DIR=/data", "-e", "TP_OUT_DIR=/run/out", "-e", "TMPDIR=/run/tmp",
                 "-w", "/run", DOCKER_IMAGE, "Rscript", "--vanilla", "/tp/runner.R", "program.R"]
+    if BACKEND == "rlimit":
+        cmd = ["Rscript", "--vanilla", str(R_DIR / "runner.R"), "program.R"]
+        return (["unshare", "-rn"] + cmd) if _can_unshare() else cmd
     return ["sandbox-exec", "-D", f"RUN_DIR={run_dir}", "-D", f"DATA_DIR={data_dir}", "-D", f"R_DIR={R_DIR}",
             "-D", f"HOME_DIR={Path.home().resolve()}", "-f", str(R_DIR / "sandbox.sb"),
             "Rscript", "--vanilla", str(R_DIR / "runner.R"), "program.R"]
+
+
+_UNSHARE: bool | None = None
+
+
+def _can_unshare() -> bool:
+    """Whether this host lets an unprivileged process drop into its own (empty) network namespace."""
+    global _UNSHARE
+    if _UNSHARE is None:
+        import subprocess
+        try:
+            _UNSHARE = subprocess.run(["unshare", "-rn", "true"], capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _UNSHARE = False
+    return _UNSHARE
+
+
+def _limits() -> None:  # runs in the child before exec (rlimit backend)
+    import resource
+    for res, val in ((resource.RLIMIT_CPU, TIMEOUT + 5), (resource.RLIMIT_AS, MEM_BYTES),
+                     (resource.RLIMIT_FSIZE, 200 * 2**20), (resource.RLIMIT_NPROC, 256), (resource.RLIMIT_NOFILE, 256)):
+        resource.setrlimit(res, (val, val))
+
+
+def backend_label() -> str:
+    if BACKEND == "rlimit":
+        return "Linux resource limits" + (", no network" if _can_unshare() else "")
+    return {"sandbox": "macOS sandbox, no network", "docker": "Docker, no network"}.get(BACKEND, BACKEND)
 
 
 class Executor:
@@ -67,6 +102,7 @@ class Executor:
         t0 = time.time()
         proc = await asyncio.create_subprocess_exec(
             *_command(run_dir, data_dir), cwd=run_dir, env=env, start_new_session=True,
+            preexec_fn=_limits if BACKEND == "rlimit" else None,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         self.procs[run_id] = (ws_path, proc)
@@ -118,7 +154,7 @@ class Executor:
         prov = {
             "program_sha256": sha256(run_dir / "program.R"),
             "datasets": {d.name: sha256(next(d.glob("source.*"))) for d in data_dir.iterdir() if d.is_dir() and any(d.glob("source.*"))},
-            "backend": BACKEND,
+            "backend": BACKEND, "isolation": backend_label(),
             "r_version": result.get("r_version"),
             "packages": result.get("packages"),
         }

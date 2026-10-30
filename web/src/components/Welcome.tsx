@@ -93,6 +93,17 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
         </motion.section>
 
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.08 }} className="mt-12 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+          {health?.public ? (
+            <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel backdrop-blur-xl">
+              <div className="mb-1 text-[13px] font-semibold">Public demo</div>
+              <div className="text-xs leading-relaxed text-fg-3">
+                This copy runs on a shared public server with the public CDISC pilot study only. Uploading is turned off: do not
+                put real participant data into a public demo. Runs and agent requests are rate-limited per visitor, and other
+                visitors can open the workspaces listed here. The agent's model is {health.llm.configured ? `${health.llm.model} (${health.llm.host})` : 'not connected'}.
+                It is not validated for regulatory submission or clinical decisions.
+              </div>
+            </div>
+          ) : (
           <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel backdrop-blur-xl">
             <div className="mb-1 text-[13px] font-semibold">New workspace</div>
             <div className="mb-4 text-xs text-fg-3">Bring your own analysis datasets. They stay on this machine; the R sandbox has no network access.</div>
@@ -102,7 +113,7 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
               <Button variant="ghost" size="sm" onClick={() => create()} disabled={!!busy}>Create empty workspace <ArrowRight /></Button>
             </div>
           </div>
-
+          )}
           <div className="flex flex-col rounded-2xl border border-line bg-surface p-5 shadow-panel backdrop-blur-xl">
             <div className="mb-3 flex items-center gap-2.5">
               <div className="grid size-8 place-items-center rounded-lg bg-violet-soft text-violet"><FlaskConical className="size-4" /></div>
@@ -144,7 +155,7 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
 
         <footer className="mt-16 flex flex-wrap gap-x-6 gap-y-1 border-t border-line-soft pt-5 text-[11px] text-fg-3">
           <span>{health ? health.r : 'backend not reachable'}</span>
-          {health && <span>R executor: {health.executor}</span>}
+          {health && <span>R executor: {health.isolation ?? health.executor}</span>}
           <span>Not validated for regulatory submission or clinical decision-making.</span>
         </footer>
       </main>

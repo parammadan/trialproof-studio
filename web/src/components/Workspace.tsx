@@ -162,7 +162,7 @@ export default function Workspace({ id, theme, toggleTheme, onHome }: { id: stri
             </Button>
           </Tip>
           <div className="mx-1 h-5 w-px bg-line" />
-          <button onClick={() => setSettings(true)} className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-[11px] text-fg-2 transition hover:bg-surface-3">
+          <button onClick={() => !health?.public && setSettings(true)} title={health?.public ? 'Fixed by the public demo server' : undefined} className="flex h-7 items-center gap-1.5 rounded-md border border-line px-2 text-[11px] text-fg-2 transition hover:bg-surface-3">
             <span className={cn('size-1.5 rounded-full', health?.llm.configured ? 'bg-ok' : 'bg-warn')} />
             <span className="hidden max-w-40 truncate sm:inline">{health?.llm.configured ? health.llm.model : 'Connect a model'}</span>
             <Settings2 className="size-3.5 text-fg-3" />

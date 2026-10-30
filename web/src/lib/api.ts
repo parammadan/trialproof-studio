@@ -10,7 +10,7 @@ export type Spec = {
 export type SpecRow = { version: number; spec: Spec; status: 'proposed' | 'approved' | 'rejected' | 'superseded'; rationale: string; proposed_by: string; decided_by: string | null; created_at: number; decided_at: number | null }
 export type Table = { id: string; title: string; type: string; columns: string[]; rows: Record<string, unknown>[] }
 export type RunError = { ok: false; kind: string; message: string; line?: number | null; end_line?: number | null }
-export type Run = { id: string; program_version: number; status: string; started: number; ended: number; console: string; result: Record<string, unknown> & { warnings?: { line: number; end_line: number; message: string }[] }; tables: Table[]; provenance: { program_sha256: string; datasets: Record<string, string>; backend: string; r_version?: string; packages?: Record<string, string> } }
+export type Run = { id: string; program_version: number; status: string; started: number; ended: number; console: string; result: Record<string, unknown> & { warnings?: { line: number; end_line: number; message: string }[] }; tables: Table[]; provenance: { program_sha256: string; datasets: Record<string, string>; backend: string; isolation?: string; r_version?: string; packages?: Record<string, string> } }
 export type Cell = { level: string; soc: string | null; pt: string | null; group: string; n: number | null; N: number | null; ref_n?: number | null; ref_N?: number | null; status: 'passed' | 'mismatch' | 'not_verified'; reason?: string | null }
 export type TableValidation = { table_id: string; status: 'passed' | 'mismatch' | 'not_verified'; passed: number; mismatch: number; not_verified: number; cells: Cell[]; reason?: string; groups?: string[]; population_n?: number; pattern?: string[] }
 export type Validation = { validation_id: string; run_id: string; spec_version: number | null; program_version: number; tables: TableValidation[] }
@@ -29,7 +29,7 @@ export type Trace = {
   records_sample?: Record<string, string>[]; code_lines?: { line: number; text: string; terms: string[] }[]
 }
 export type Relationship = { a: string; b: string; shared_columns: string[]; keys: { column: string; parent: string; child: string; child_distinct: number; matched: number; parent_without_child: number }[] }
-export type Health = { r: string; executor: string; llm: { base_url: string; model: string; has_key: boolean; configured: boolean; host: string }; acked_hosts: string[] }
+export type Health = { r: string; executor: string; isolation?: string; public?: boolean; llm: { base_url: string; model: string; has_key: boolean; configured: boolean; host: string }; acked_hosts: string[] }
 export type Ev = { id: number | null; ts?: number; kind: string; payload: Record<string, any> }
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {

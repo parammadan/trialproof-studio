@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
+import time
+from collections import defaultdict, deque
 import tempfile
 from pathlib import Path
 
@@ -15,7 +18,7 @@ from pydantic import BaseModel
 from . import datasets as dsets
 from .agent import Agent
 from .bus import Bus
-from .executor import BACKEND, Executor
+from .executor import BACKEND, Executor, backend_label
 from .llm import LLMConfig, list_models
 from .store import ROOT, Store
 from .studio import Studio
@@ -25,6 +28,33 @@ bus = Bus(store)
 studio = Studio(store, bus, Executor())
 agent = Agent(studio)
 app = FastAPI(title="TrialProof Studio")
+
+# Public demo mode (TP_PUBLIC=1): pilot data only, model settings fixed by the server, per-visitor rate limits
+PUBLIC = os.environ.get("TP_PUBLIC") == "1"
+LIMITS = {"run": (40, 3600), "messages": (20, 3600), "workspaces": (10, 3600)}  # (requests, per seconds)
+_hits: dict[tuple[str, str], deque] = defaultdict(deque)
+if PUBLIC and agent.config().configured:
+    store.set_setting("acked_hosts", [agent.config().host])  # the operator chose this endpoint for public data
+
+
+@app.middleware("http")
+async def public_guard(request: Request, call_next):
+    if PUBLIC and request.method != "GET":
+        path = request.url.path
+        if path.startswith("/api/settings") or (path.endswith("/datasets") and request.method == "POST"):
+            return Response(json.dumps({"detail": "not available in the public demo"}), 403, media_type="application/json")
+        kind = next((k for k in LIMITS if path.rstrip("/").endswith(k)), None)
+        if kind:
+            ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+            n, per = LIMITS[kind]
+            q, now = _hits[(ip, kind)], time.time()
+            while q and q[0] < now - per:
+                q.popleft()
+            if len(q) >= n:
+                return Response(json.dumps({"detail": f"rate limit: {n} {kind} requests per hour in the public demo"}), 429,
+                                media_type="application/json")
+            q.append(now)
+    return await call_next(request)
 
 
 def ws_or_404(wid: str) -> dict:
@@ -42,7 +72,8 @@ def bad(e: Exception):
 @app.get("/api/health")
 def health():
     r = subprocess.run(["Rscript", "--version"], capture_output=True, text=True)
-    return {"r": (r.stdout or r.stderr).strip(), "executor": BACKEND, "llm": agent.config().public(),
+    return {"r": (r.stdout or r.stderr).strip(), "executor": BACKEND, "isolation": backend_label(), "public": PUBLIC,
+            "llm": agent.config().public(),
             "acked_hosts": store.get_setting("acked_hosts", [])}
 
 
