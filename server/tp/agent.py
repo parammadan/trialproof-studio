@@ -45,9 +45,14 @@ R program rules:
     group  the treatment group label exactly as in the data
     n      number of distinct subjects with the event in that group
     N      number of subjects in the group's population denominator (from the subject-level dataset, not from the AE dataset)
-    pct    100 * n / N (optional)
+    pct    100 * n / N, a number from 0 to 100 (required unless the spec says "percent": {"required": false}; it is checked
+           against the reference within half a unit of the spec's percent.decimals, so unrounded or correctly rounded is fine)
   Emit ONE teae_summary table that holds all three levels: build the any, soc and pt pieces, then bind_rows() them.
   Add constant columns with mutate() (e.g. mutate(level = "soc", pt = NA_character_)); select() cannot create columns.
+  Emit only categories that have qualifying events in at least one group (no invented or padded rows unless the spec says
+  "zero_cells": "required"), each category and group once, with each PT under the SOC it is coded to.
+  If the spec has "uncoded": {"handling": "label", "label": L}, replace a blank or NA SOC or PT with L before counting;
+  with {"handling": "exclude"}, drop the records whose SOC or PT is blank before counting, from every level.
   Count subjects, not events (n_distinct of the subject id). Take the denominator from the population in ADSL so that groups with no events still have N. Apply the population to the AE records too (join to the population subjects).
 - Other outputs use type = "generic"; they are shown but not independently verified.
 - Top-level expressions are executed one at a time and errors are reported with their line range.
@@ -58,7 +63,9 @@ Specification format (propose_spec):
  "population": [{"var": "SAFFL", "op": "eq", "value": "Y"}],
  "treatment_var": "TRT01A",
  "event_filter": [{"var": "TRTEMFL", "op": "eq", "value": "Y"}],
- "soc_var": "AEBODSYS", "pt_var": "AEDECOD", "include_total": false}
+ "soc_var": "AEBODSYS", "pt_var": "AEDECOD", "include_total": false,
+ "percent": {"required": true, "decimals": 1}, "zero_cells": "optional"}
+If qualifying events have a blank SOC or PT the proposal is rejected until it adds "uncoded": {"handling": "label", "label": "Uncoded"} or {"handling": "exclude"}; tabulate the coding variables first and explain the choice in the rationale.
 ops: eq, ne, in, not_in (value is a list), missing, not_missing, gt, ge, lt, le. Population conditions apply to the subject dataset; event_filter conditions apply to the events dataset. If include_total is true, also emit group = "Total".
 """
 
@@ -83,7 +90,11 @@ TOOLS = [
             "datasets": {"type": "object", "properties": {"subject": {"type": "string"}, "events": {"type": "string"}}},
             "subject_id": {"type": "string"}, "population": {"type": "array", "items": COND},
             "treatment_var": {"type": "string"}, "event_filter": {"type": "array", "items": COND},
-            "soc_var": {"type": "string"}, "pt_var": {"type": "string"}, "include_total": {"type": "boolean"}}},
+            "soc_var": {"type": "string"}, "pt_var": {"type": "string"}, "include_total": {"type": "boolean"},
+            "percent": {"type": "object", "properties": {"required": {"type": "boolean"}, "decimals": {"type": "integer"}}},
+            "zero_cells": {"type": "string", "enum": ["optional", "required"]},
+            "uncoded": {"type": "object", "properties": {"handling": {"type": "string", "enum": ["label", "exclude"]},
+                                                         "label": {"type": "string"}}}}},
          "rationale": {"type": "string", "description": "Why these choices, citing what you found in the data, and what alternatives exist."}},
         ["spec", "rationale"]),
     _fn("ask_user", "Ask the user a clarifying question when a choice is genuinely theirs. Stop after calling this.",
@@ -269,9 +280,11 @@ class Agent:
         run = self.studio.get_run(wid)
         val = self.studio.get_validation(wid, run["id"]) if run else None
         tabs = (val or {}).get("tables") or []
+        vs = self.studio.verification_state(wid)
         latest = (f"latest run: program v{run['program_version']} ({run['status']})"
                   + (", validation " + "; ".join(f"{t['table_id']}: {t['status']}, {t.get('passed', 0)} passed, {t.get('mismatch', 0)} mismatched"
                                                  for t in tabs) if tabs else "") if run else "latest run: none")
+        latest += f"; verification is {vs['state'].replace('_', ' ')}" + (f" ({'; '.join(vs['reasons'])})" if vs["reasons"] else "")
         # the user can edit and run outside the chat, so state the current facts on every step, not only in history
         state = (f"Workspace state now: datasets {[f'{d['name']} ({d['nrow']}x{d['ncol']})' for d in ds]}; "
                  f"approved spec: {'v' + str(spec['version']) if spec else 'none'}; "
@@ -508,6 +521,7 @@ class Agent:
                    "error": r["error"], "warnings": r["warnings"][:5], "console_tail": r["console"][-2500:], "tables": tables}
             if r.get("validation"):
                 out["validation"] = r["validation"]["tables"]
+            out["verification"] = r.get("verification")
             prev_err = self._last_run_error.get(wid)
             msg = (r.get("error") or {}).get("message") if isinstance(r.get("error"), dict) else None
             if msg and msg == prev_err:
@@ -525,7 +539,8 @@ class Agent:
                 bad = [c for c in t.get("cells", []) if c["status"] == "mismatch"]
                 tables.append({k: t[k] for k in ("table_id", "status", "passed", "mismatch", "not_verified", "pattern") if k in t}
                               | {"mismatches": bad[:12], "reason": t.get("reason")})
-            out = {"ok": True, "run_id": run["id"], "spec_version": v["spec_version"], "tables": tables}
+            out = {"ok": True, "run_id": run["id"], "spec_version": v["spec_version"], "tables": tables,
+                   "verification": st.verification_state(wid)}
             good, cur = st.last_passing_program(wid), store.latest_program(wid)
             if any(t["mismatch"] for t in tables) and good and cur and good["version"] != cur["version"]:
                 out["since_last_passing"] = {"last_passing_version": good["version"], "current_version": cur["version"],
