@@ -1,0 +1,13 @@
+PID,BODYSYS,TERM,EMERGENT,SEVERITY
+P01,Nervous system,Headache,Y,MILD
+P01,Nervous system,Headache,Y,MODERATE
+P01,Gastrointestinal,Nausea,Y,MILD
+P02,Nervous system,Dizziness,Y,MILD
+P02,Gastrointestinal,Nausea,N,MILD
+P03,Gastrointestinal,,Y,MILD
+P04,Nervous system,Headache,Y,SEVERE
+P05,Nervous system,Headache,Y,MILD
+P06,,Rash,Y,MILD
+P06,Gastrointestinal,Nausea,Y,MILD
+P08,Nervous system,Headache,Y,MILD
+P99,Nervous system,Headache,Y,MILD

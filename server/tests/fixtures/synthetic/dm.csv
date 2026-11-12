@@ -1,0 +1,9 @@
+PID,ARMGRP,SAFETY,AGE,SEX
+P01,Drug,Y,54,F
+P02,Drug,Y,61,M
+P03,Drug,Y,47,F
+P04,Drug,N,70,M
+P05,Control,Y,58,M
+P06,Control,Y,66,F
+P07,Control,Y,39,F
+P08,,Y,52,M
