@@ -22,6 +22,16 @@ def _sha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
+class ApprovalError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+DECISIONS = {"approved", "changes_requested"}
+STATES = ("verified", "failed", "not_verified", "stale", "in_progress")
+
+
 def unified_diff(a: str, b: str, va, vb) -> str:
     return "".join(difflib.unified_diff(a.splitlines(True), b.splitlines(True), f"program.R v{va}", f"program.R v{vb}"))
 
@@ -53,7 +63,16 @@ class Studio:
         return out
 
     def propose_spec(self, wid: str, spec: dict, rationale: str, by: str) -> dict:
+        spec = ref.normalize_spec(spec)
         problems = ref.check_spec(spec, self.columns(wid))
+        if not problems and spec.get("type") == "teae_summary" and not spec.get("uncoded"):
+            n = ref.uncoded_records(spec, dsets.read_rows(self.store, wid, spec["datasets"]["subject"]),
+                                    dsets.read_rows(self.store, wid, spec["datasets"]["events"]))
+            if n:
+                problems = [f"{n} qualifying event records in {spec['datasets']['events']} have a blank {spec['soc_var']} or "
+                            f"{spec['pt_var']}; the specification must say how to treat them: "
+                            '"uncoded": {"handling": "label", "label": "Uncoded"} or {"handling": "exclude"} '
+                            "(exclude drops those records from every level, including the any-TEAE row)"]
         if problems:
             return {"ok": False, "problems": problems}
         last = self.store.one("select max(version) v from specs where ws_id=?", (wid,))
@@ -88,7 +107,10 @@ class Studio:
         def on_event(kind, payload):
             self.bus.emit(wid, kind, program_version=prog["version"], by=by, **payload)
 
+        spec_at_run = self.store.approved_spec(wid)
         res = await self.ex.run(self.store.ws_path(wid), prog["code"], on_event)
+        res.provenance["spec_version"] = spec_at_run["version"] if spec_at_run else None
+        res.provenance["program_version"] = prog["version"]
         self.store.x("insert into runs values(?,?,?,?,?,?,?,?,?,?)",
                      (res.run_id, wid, prog["version"], res.status, time.time() - res.duration, time.time(),
                       res.console, json.dumps(res.result), json.dumps(res.tables), json.dumps(res.provenance)))
@@ -100,6 +122,7 @@ class Studio:
                "error": None if res.ok else res.result, "tables": res.tables, "warnings": res.result.get("warnings") or []}
         if res.ok and any(t.get("type") == "teae_summary" for t in res.tables):
             out["validation"] = self.validate(wid, res.run_id)
+        out["verification"] = self.verification_state(wid, res.run_id)
         return out
 
     def get_run(self, wid: str, run_id: str | None = None) -> dict | None:
@@ -129,13 +152,16 @@ class Studio:
                                "reason": "no approved specification" if t.get("type") == "teae_summary"
                                else f"no independent reference implementation for table type {t.get('type')!r}"})
                 continue
-            cmp = ref.compare(self._reference(wid, spec_row["spec"]), t)
+            cmp = ref.compare(self._reference(wid, spec_row["spec"]), t, spec_row["spec"])
             if cmp["mismatch"]:
                 code = self.store.program(wid, run["program_version"])["code"]
                 cmp["pattern"] += ref.spec_coverage(code, spec_row["spec"], self.columns(wid))
             tables.append({"table_id": t["id"], "status": "passed" if cmp["mismatch"] == 0 else "mismatch", **cmp})
+        # the exact evidence this result depends on: if any of it changes, the result is stale
         summary = {"validation_id": vid, "run_id": run_id, "spec_version": spec_row["version"] if spec_row else None,
-                   "program_version": run["program_version"],
+                   "spec_sha256": _sha(json.dumps(spec_row["spec"], sort_keys=True)) if spec_row else None,
+                   "program_version": run["program_version"], "program_sha256": run["provenance"].get("program_sha256"),
+                   "datasets": run["provenance"].get("datasets") or {},
                    "tables": [{k: v for k, v in t.items() if k != "cells"} for t in tables]}
         self.store.x("insert into validations values(?,?,?,?,?,?,?)",
                      (vid, wid, run_id, summary["spec_version"], json.dumps(summary), json.dumps(tables), time.time()))
@@ -147,6 +173,50 @@ class Studio:
         if not v:
             return None
         return {**json.loads(v["summary"]), "tables": json.loads(v["cells"])}
+
+    def verification_state(self, wid: str, run_id: str | None = None) -> dict:
+        """Whether a run's verification is current: verified, failed, not_verified, stale or in_progress.
+        Stale means the program, the approved specification or a dataset the specification uses has changed
+        since the validation; the historical result is kept but is no longer the current one."""
+        if run_id is None and any(path == self.store.ws_path(wid) for path, _ in self.ex.procs.values()):
+            return {"state": "in_progress", "reasons": ["a run is executing"], "run_id": None, "validation_id": None}
+        run = self.get_run(wid, run_id)
+        if not run:
+            return {"state": "not_verified", "reasons": ["nothing has been run"], "run_id": None, "validation_id": None}
+        val = self.get_validation(wid, run["id"])
+        out = {"run_id": run["id"], "validation_id": val["validation_id"] if val else None,
+               "program_version": run["program_version"], "spec_version": val["spec_version"] if val else None}
+        reasons, stale = [], []
+        latest = self.store.latest_program(wid)
+        if latest and latest["version"] != run["program_version"]:
+            stale.append(f"the program changed after this run (run used v{run['program_version']}, current is v{latest['version']})")
+        spec = self.store.approved_spec(wid)
+        if val and val["spec_version"] is not None:
+            if not spec:
+                stale.append(f"specification v{val['spec_version']} is no longer approved")
+            elif spec["version"] != val["spec_version"]:
+                stale.append(f"the approved specification changed (validated against v{val['spec_version']}, current is v{spec['version']})")
+            used = val.get("datasets") or run["provenance"].get("datasets") or {}
+            names = (spec or {}).get("spec", {}).get("datasets", {}).values() if spec else []
+            now = {d["name"]: d["sha256"] for d in self.store.q("select name, sha256 from datasets where ws_id=?", (wid,))}
+            for name in names:
+                if used.get(name) != now.get(name):
+                    stale.append(f"dataset {name} changed after the validation")
+        if stale:
+            return {**out, "state": "stale", "reasons": stale}
+        if run["status"] != "succeeded":
+            return {**out, "state": "not_verified", "reasons": [f"the run {run['status']}"]}
+        tables = (val or {}).get("tables") or []
+        if not val or not tables:
+            return {**out, "state": "not_verified", "reasons": ["the run has no table of a verifiable type (teae_summary) or no approved specification"]}
+        if any(t["status"] == "mismatch" for t in tables):
+            m = sum(t.get("mismatch", 0) for t in tables)
+            return {**out, "state": "failed", "reasons": [f"{m} cell{'s' if m != 1 else ''} do not match the independent reference"]}
+        nv = [t["table_id"] for t in tables if t["status"] == "not_verified"]
+        if nv:
+            reasons.append(f"table{'s' if len(nv) > 1 else ''} {', '.join(nv)} not independently verified")
+            return {**out, "state": "not_verified", "reasons": reasons}
+        return {**out, "state": "verified", "reasons": []}
 
     def last_passing_program(self, wid: str) -> dict | None:
         """The newest program version whose latest validation had verified tables and no mismatches."""
@@ -172,7 +242,7 @@ class Studio:
                     and (r.get("pt") or None) == pt and r.get("group") == group), None)
         out = {"run_id": run_id, "table_id": table_id, "program_version": run["program_version"],
                "cell": {"level": level, "soc": soc, "pt": pt, "group": group},
-               "program_value": {"n": row.get("n"), "N": row.get("N")} if row else None}
+               "program_value": {"n": row.get("n"), "N": row.get("N"), "pct": row.get("pct")} if row else None}
         if not spec_row or table.get("type") != "teae_summary":
             out["reference"] = None
             out["note"] = "No approved specification for this table, so there is no independent derivation to trace."
@@ -201,28 +271,75 @@ class Studio:
         return out
 
     # ---------- sign-off ----------
-    def approve(self, wid: str, run_id: str, reviewer: str, decision: str, note: str) -> dict:
-        v = self.store.one("select * from validations where ws_id=? and run_id=? order by created_at desc limit 1", (wid, run_id))
-        if not reviewer.strip():
-            raise ValueError("a reviewer name is required")
-        aid = uuid.uuid4().hex[:10]
-        self.store.x("insert into approvals values(?,?,?,?,?,?,?,?)",
-                     (aid, wid, run_id, v["id"] if v else None, reviewer.strip(), decision, note, time.time()))
+    def approve(self, wid: str, run_id: str, reviewer: str, decision: str, note: str, confirmed: bool = False,
+                session: str | None = None) -> dict:
+        """Record a human review. "approved" requires a successful run whose independent verification passed and is
+        current (same program, approved spec and datasets). A verified match is not regulatory or clinical approval."""
+        if decision not in DECISIONS:
+            raise ApprovalError(400, f"decision must be one of {sorted(DECISIONS)}")
+        reviewer = (reviewer or "").strip()
+        if not reviewer or len(reviewer) > 120:
+            raise ApprovalError(400, "a reviewer name (up to 120 characters) is required")
         run = self.get_run(wid, run_id)
-        self.bus.emit(wid, "signoff", approval_id=aid, run_id=run_id, reviewer=reviewer.strip(), decision=decision,
-                      note=note, program_version=run["program_version"], program_sha256=run["provenance"]["program_sha256"],
-                      validation=json.loads(v["summary"]) if v else None)
-        return {"approval_id": aid}
+        if not run:
+            raise ApprovalError(404, "no such run")
+        state = self.verification_state(wid, run_id)
+        if decision == "approved":
+            if not confirmed:
+                raise ApprovalError(400, "confirm that you reviewed the specification, program and results yourself")
+            if state["state"] != "verified":
+                raise ApprovalError(409, f"cannot sign off: verification is {state['state'].replace('_', ' ')}"
+                                         + (f" ({'; '.join(state['reasons'])})" if state["reasons"] else ""))
+        val = self.get_validation(wid, run_id)
+        spec_row = self.store.spec(wid, val["spec_version"]) if val and val.get("spec_version") else None
+        evidence = {"verification_state": state["state"], "reasons": state["reasons"],
+                    "validation_id": val["validation_id"] if val else None, "spec_version": val["spec_version"] if val else None,
+                    "spec_sha256": _sha(json.dumps(spec_row["spec"], sort_keys=True)) if spec_row else None,
+                    "program_version": run["program_version"], "program_sha256": run["provenance"].get("program_sha256"),
+                    "datasets": run["provenance"].get("datasets"), "confirmed_review": bool(confirmed),
+                    "session": (session or "")[:12] or None}
+        aid = uuid.uuid4().hex[:10]
+        self.store.x("insert into approvals(id, ws_id, run_id, validation_id, reviewer, decision, note, created_at, evidence) "
+                     "values(?,?,?,?,?,?,?,?,?)", (aid, wid, run_id, evidence["validation_id"], reviewer, decision, note[:2000],
+                                                   time.time(), json.dumps(evidence)))
+        self.bus.emit(wid, "signoff", approval_id=aid, run_id=run_id, reviewer=reviewer, decision=decision,
+                      note=note[:2000], program_version=run["program_version"], program_sha256=evidence["program_sha256"],
+                      validation=json.loads(json.dumps({k: v for k, v in (val or {}).items() if k != "tables"})) if val else None,
+                      evidence=evidence)
+        return {"approval_id": aid, "verification_state": state["state"]}
 
     # ---------- export ----------
     def export(self, wid: str, run_id: str | None = None) -> bytes:
+        """The evidence of one run exactly as it was: its program, the specification its validation used (never a
+        newer one), its datasets' hashes, results, validation, reviews and its verification state now."""
         run = self.get_run(wid, run_id)
         if not run:
             raise ValueError("nothing has been run yet")
         prog = self.store.program(wid, run["program_version"])
-        spec = self.store.approved_spec(wid)
         val = self.get_validation(wid, run["id"])
-        ws = self.store.one("select * from workspaces where id=?", (wid,))
+        spec_v = (val or {}).get("spec_version") or run["provenance"].get("spec_version")
+        spec = self.store.spec(wid, spec_v) if spec_v else None
+        state = self.verification_state(wid, run["id"])
+        approvals = self.store.q("select * from approvals where ws_id=? and run_id=? order by created_at", (wid, run["id"]))
+        for a in approvals:
+            a["evidence"] = json.loads(a["evidence"]) if a.get("evidence") else None
+        ws = self.store.one("select id, name, created_at from workspaces where id=?", (wid,))
+        current = {d["name"]: d for d in self.store.q("select name, filename, sha256, nrow, ncol, source from datasets where ws_id=?", (wid,))}
+        used = run["provenance"].get("datasets") or {}
+        datasets = [{"name": k, "sha256_at_run": v, **({kk: vv for kk, vv in current[k].items() if kk != "name"} if k in current else {}),
+                     "unchanged_since_run": k in current and current[k]["sha256"] == v} for k, v in used.items()]
+        program_ok = _sha(prog["code"]) == run["provenance"].get("program_sha256")
+        manifest = {"workspace": ws, "run_id": run["id"], "run_status": run["status"], "program_version": run["program_version"],
+                    "program_sha256": run["provenance"].get("program_sha256"), "program_matches_recorded_hash": program_ok,
+                    "spec_version": spec_v, "spec_sha256": _sha(json.dumps(spec["spec"], sort_keys=True)) if spec else None,
+                    "spec_source": "the version the validation used" if (val or {}).get("spec_version") else
+                                   ("the version approved when the program ran (not validated)" if spec_v else "none approved"),
+                    "validation_id": (val or {}).get("validation_id"),
+                    "validation_status": [{"table_id": t["table_id"], "status": t["status"], "passed": t.get("passed"),
+                                           "mismatch": t.get("mismatch")} for t in (val or {}).get("tables", [])],
+                    "verification_state_at_export": state, "datasets": datasets, "reviews": approvals,
+                    "isolation": run["provenance"].get("isolation"), "r_version": run["provenance"].get("r_version"),
+                    "exported_at": time.time()}
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr("program.R", prog["code"])
@@ -240,16 +357,20 @@ class Studio:
                 z.writestr(f"results/{t['id']}.csv", s.getvalue())
             if val:
                 z.writestr("validation.json", json.dumps(val, indent=2))
+            z.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
             z.writestr("provenance.json", json.dumps({"workspace": ws, "run_id": run["id"], "status": run["status"],
                                                      "program_version": run["program_version"], **run["provenance"],
-                                                     "datasets": self.store.q("select name, filename, sha256, nrow, ncol, source from datasets where ws_id=?", (wid,))}, indent=2))
+                                                     "datasets": datasets}, indent=2, default=str))
             z.writestr("audit_log.jsonl", "\n".join(json.dumps(e, default=str) for e in self.store.events(wid)))
             z.writestr("README.txt", (
-                "TrialProof Studio export\n\n"
+                "TrialProof Studio export of one run\n\n"
+                "manifest.json lists exactly what this run used: program version and SHA-256, the specification version\n"
+                "its validation used (analysis_spec.json; never a later one), dataset SHA-256 at run time, the validation,\n"
+                "any reviews, and whether the result is still current (verification_state_at_export).\n\n"
                 "Re-run: place each dataset's parsed copy at data/<NAME>/data.rds, set TP_DATA_DIR and TP_OUT_DIR,\n"
-                "then `Rscript r/runner.R program.R` (r/ holds the prelude and runner used for this run).\n"
-                "provenance.json holds the SHA-256 of the program and of every source dataset.\n\n"
+                "then `Rscript r/runner.R program.R` (r/ holds the prelude and runner used for this run).\n\n"
                 "This is not validated software. A passing comparison means the program agrees with the\n"
                 "independent reference computed from the approved specification; it does not establish that\n"
-                "the specification or the analysis is correct, nor fitness for regulatory use.\n"))
+                "the specification or the analysis is correct, nor fitness for regulatory use, and a reviewer's\n"
+                "sign-off here is not a regulatory or clinical approval.\n"))
         return buf.getvalue()

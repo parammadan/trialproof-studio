@@ -26,7 +26,7 @@ from .bus import Bus
 from .executor import BACKEND, Executor, IsolationError, backend_label
 from .llm import LLMConfig, list_models
 from .store import ROOT, VAR, Store
-from .studio import Studio
+from .studio import ApprovalError, Studio
 
 store = Store()
 bus = Bus(store)
@@ -222,7 +222,9 @@ def workspace(wid: str):
         "specs": specs,
         "run": run,
         "validation": studio.get_validation(wid, run["id"]) if run else None,
-        "approvals": store.q("select * from approvals where ws_id=? order by created_at", (wid,)),
+        "approvals": [{**a, "evidence": json.loads(a["evidence"]) if a.get("evidence") else None}
+                      for a in store.q("select * from approvals where ws_id=? order by created_at", (wid,))],
+        "verification": studio.verification_state(wid),
         "agent_busy": agent.busy(wid),
         "last_event": (store.one("select max(id) m from events where ws_id=?", (wid,)) or {}).get("m") or 0,
     }
@@ -335,7 +337,7 @@ def get_run(wid: str, run_id: str):
     r = studio.get_run(wid, run_id)
     if not r:
         raise HTTPException(404, "no such run")
-    return {**r, "validation": studio.get_validation(wid, run_id)}
+    return {**r, "validation": studio.get_validation(wid, run_id), "verification": studio.verification_state(wid, run_id)}
 
 
 class TraceReq(BaseModel):
@@ -418,14 +420,15 @@ class SignOff(BaseModel):
     reviewer: str
     decision: str  # approved | changes_requested
     note: str = ""
+    confirmed: bool = False  # the reviewer confirms they reviewed spec, program and results themselves
 
 
 @app.post("/api/workspaces/{wid}/signoff")
-def signoff(wid: str, b: SignOff):
+def signoff(wid: str, b: SignOff, request: Request):
     try:
-        return studio.approve(wid, b.run_id, b.reviewer, b.decision, b.note)
-    except ValueError as e:
-        bad(e)
+        return studio.approve(wid, b.run_id, b.reviewer, b.decision, b.note, b.confirmed, request.state.session)
+    except ApprovalError as e:
+        raise HTTPException(e.status, str(e))
 
 
 @app.get("/api/workspaces/{wid}/export")

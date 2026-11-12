@@ -48,6 +48,10 @@ class Store:
         if "owner" not in {r[1] for r in self.db.execute("pragma table_info(workspaces)")}:
             self.db.execute("alter table workspaces add column owner text")
             self.db.commit()
+        # additive: the evidence a review was made against (older reviews keep NULL)
+        if "evidence" not in {r[1] for r in self.db.execute("pragma table_info(approvals)")}:
+            self.db.execute("alter table approvals add column evidence text")
+            self.db.commit()
         self.lock = threading.Lock()
 
     def q(self, sql: str, args=()) -> list[dict]:
