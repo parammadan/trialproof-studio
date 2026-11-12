@@ -57,7 +57,7 @@ def two_workspaces(tmp_path, monkeypatch):
     for wid, name in ((a, "mine.csv"), (b, "other.csv")):
         src = tmp_path / name
         src.write_text("id,value\n1,SECRET_ROW\n2,y\n")
-        asyncio.run(dsets.ingest(store, wid, src, name))
+        asyncio.run(dsets.ingest(store, wid, src, name, ex=st.ex))
     return store, st, a, b
 
 
@@ -211,3 +211,48 @@ def test_public_mode_still_runs_and_verifies(public_server):
     r = c.post(f"/api/workspaces/{wid}/run", json={}).json()
     t = r["validation"]["tables"][0]
     assert r["status"] == "succeeded" and t["status"] == "passed" and t["passed"] == 417 and t["mismatch"] == 0
+
+
+# ---------------------------------------------------------------- Milestone 3: uploads are parsed in the sandbox
+def test_ingest_refused_without_a_verified_sandbox(tmp_path, monkeypatch):
+    monkeypatch.setattr("tp.store.WS_DIR", tmp_path / "ws")
+    store = Store(tmp_path / "t.db")
+    wid = store.create_workspace("w")["id"]
+    src = tmp_path / "x.csv"
+    src.write_text("id,v\n1,2\n")
+    with pytest.raises(dsets.IngestError):
+        asyncio.run(dsets.ingest(store, wid, src, "x.csv"))            # no executor at all
+    with pytest.raises(IsolationError):
+        asyncio.run(dsets.ingest(store, wid, src, "x.csv", ex=Executor(tmp_path)))  # self-test never run
+    assert not store.q("select 1 from datasets")
+
+
+def test_ingest_runs_inside_the_sandbox(two_workspaces, monkeypatch, tmp_path):
+    store, st, a, b = two_workspaces
+    seen = []
+    real = ex_mod._command
+    monkeypatch.setattr(ex_mod, "_command", lambda *args: seen.append(real(*args)) or seen[-1])
+    src = tmp_path / "AE2.csv"
+    src.write_text("USUBJID,AETERM\n1,HEADACHE\n")
+    d = asyncio.run(dsets.ingest(store, a, src, "AE2.csv", ex=st.ex))
+    assert d["nrow"] == 1 and seen and seen[0][0] in ("sandbox-exec", "bwrap") and any("ingest.R" in x for x in seen[0])
+    assert not (store.ws_path(a) / "ingest").exists() or not any((store.ws_path(a) / "ingest").iterdir())
+
+
+def test_public_uploads_are_parsed_and_capped(public_server, tmp_path):
+    url = public_server(TP_UPLOAD_MB="0.01", TP_MAX_DATASETS="2")
+    c = httpx.Client(base_url=url, timeout=120)
+    wid = c.post("/api/workspaces", json={"name": "upload"}).json()["id"]
+    fx = Path(__file__).parent / "fixtures" / "synthetic"
+    r = c.post(f"/api/workspaces/{wid}/datasets", files=[("files", ("dm.csv", (fx / "dm.csv").read_bytes())),
+                                                       ("files", ("aev.csv", (fx / "aev.csv").read_bytes()))])
+    assert r.status_code == 200 and [d["name"] for d in r.json()["datasets"]] == ["DM", "AEV"], r.text
+    r = c.post(f"/api/workspaces/{wid}/datasets", files=[("files", ("third.csv", b"a,b\n1,2\n"))]).json()
+    assert not r["datasets"] and "at most 2 datasets" in r["errors"][0]["error"]
+    r = c.post(f"/api/workspaces/{wid}/datasets", files=[("files", ("dm.csv", b"PID,X\n" + b"1,2\n" * 5000))]).json()
+    assert not r["datasets"] and "MB limit" in r["errors"][0]["error"]
+    r = c.post(f"/api/workspaces/{wid}/datasets", files=[("files", ("run.sh", b"echo hi\n"))]).json()
+    assert "unsupported file type" in r["errors"][0]["error"]
+    other = httpx.Client(base_url=url, timeout=30)
+    assert c.get(f"/api/workspaces/{wid}/datasets/DM/rows").status_code == 200
+    assert other.get(f"/api/workspaces/{wid}/datasets/DM/rows").status_code == 404

@@ -6,6 +6,7 @@ import asyncio
 import csv
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -44,28 +45,48 @@ def dataset_name(filename: str) -> str:
     return name or "DATA"
 
 
-async def ingest(store: Store, wid: str, src: Path, filename: str, source: str = "upload") -> dict:
+MAX_UPLOAD_BYTES = int(float(os.environ.get("TP_UPLOAD_MB", "25")) * 2**20)
+MAX_DATASETS = int(os.environ.get("TP_MAX_DATASETS", "12"))  # per workspace
+
+
+async def ingest(store: Store, wid: str, src: Path, filename: str, source: str = "upload", ex=None) -> dict:
+    """Parse a file into the workspace. Parsing runs ingest.R inside the executor's sandbox (`ex`), because an
+    uploaded file is untrusted input to R's readers (an .rds file is a serialized R object)."""
+    if ex is None:
+        raise IngestError("no sandboxed executor: refusing to parse a file outside the sandbox")
     ext = Path(filename).suffix.lower()
     if ext not in FORMATS:
         raise IngestError(f"{filename}: unsupported file type (use .csv, .xpt or .rds)")
+    if src.stat().st_size > MAX_UPLOAD_BYTES:
+        raise IngestError(f"{filename}: larger than the {MAX_UPLOAD_BYTES // 2**20} MB limit")
     name = dataset_name(filename)
-    out = store.ws_path(wid) / "datasets" / name
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+    have = {d["name"] for d in store.q("select name from datasets where ws_id=?", (wid,))}
+    if name not in have and len(have) >= MAX_DATASETS:
+        raise IngestError(f"{filename}: a workspace holds at most {MAX_DATASETS} datasets")
+    stage = store.ws_path(wid) / "ingest" / uuid.uuid4().hex[:10]
+    stage.mkdir(parents=True)
+    try:
+        shutil.copyfile(src, stage / f"source{ext}")
+        code, err = await ex.ingest(stage, f"source{ext}", FORMATS[ext])
+        parsed = stage / "parsed"
+        profile_path = parsed / "profile.json"
+        try:
+            profile = json.loads(profile_path.read_text()) if profile_path.exists() else {"ok": False}
+        except ValueError:
+            profile = {"ok": False}
+        if code != 0 or not profile.get("ok") or not all((parsed / f).is_file() for f in ("data.csv", "data.rds")):
+            msg = profile.get("error") or (err.strip().splitlines() or ["parse failed"])[-1]
+            raise IngestError(f"{filename}: {msg}")
+        out = store.ws_path(wid) / "datasets" / name
+        if out.exists():
+            shutil.rmtree(out)
+        out.mkdir(parents=True)
+        for f in ("data.csv", "data.rds", "profile.json"):
+            shutil.move(str(parsed / f), out / f)
+        shutil.move(str(stage / f"source{ext}"), out / f"source{ext}")
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
     raw = out / f"source{ext}"
-    shutil.copyfile(src, raw)
-    proc = await asyncio.create_subprocess_exec(
-        "Rscript", "--vanilla", str(R_DIR / "ingest.R"), str(raw), FORMATS[ext], str(out),
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    _, err = await asyncio.wait_for(proc.communicate(), timeout=180)
-    profile_path = out / "profile.json"
-    profile = json.loads(profile_path.read_text()) if profile_path.exists() else {"ok": False}
-    if proc.returncode != 0 or not profile.get("ok"):
-        shutil.rmtree(out, ignore_errors=True)
-        msg = profile.get("error") or err.decode(errors="replace").strip().splitlines()[-1:] or ["parse failed"]
-        raise IngestError(f"{filename}: {msg if isinstance(msg, str) else msg[0]}")
     digest = sha256(raw)
     store.x("delete from datasets where ws_id=? and name=?", (wid, name))
     did = uuid.uuid4().hex[:10]
@@ -77,7 +98,7 @@ async def ingest(store: Store, wid: str, src: Path, filename: str, source: str =
             "nrow": profile["nrow"], "ncol": profile["ncol"], "source": source}
 
 
-async def load_pilot(store: Store, wid: str) -> list[dict]:
+async def load_pilot(store: Store, wid: str, ex=None) -> list[dict]:
     """Load the public CDISC pilot ADSL + ADAE, checking each file against the PhUSE hash."""
     import httpx
 
@@ -92,7 +113,7 @@ async def load_pilot(store: Store, wid: str) -> list[dict]:
                 path.write_bytes(r.content)
         if sha256(path) != want:
             raise IngestError(f"{fname}: downloaded file does not match the published SHA-256")
-        out.append(await ingest(store, wid, path, fname, source="cdisc-pilot (PhUSE, sha256 verified)"))
+        out.append(await ingest(store, wid, path, fname, source="cdisc-pilot (PhUSE, sha256 verified)", ex=ex))
     return out
 
 

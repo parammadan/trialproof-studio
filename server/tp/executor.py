@@ -61,7 +61,7 @@ class RunResult:
     provenance: dict = field(default_factory=dict)
 
 
-def _bwrap(run_dir: Path, data_dir: Path) -> list[str]:
+def _bwrap(run_dir: Path, data_dir: Path, script: list[str]) -> list[str]:
     a = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--clearenv", "--cap-drop", "ALL",
          "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc"]
     for d in ("bin", "lib", "lib32", "lib64", "libx32", "sbin"):
@@ -76,22 +76,24 @@ def _bwrap(run_dir: Path, data_dir: Path) -> list[str]:
           "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "--setenv", "HOME", "/work", "--setenv", "TMPDIR", "/work/tmp", "--setenv", "LANG", LANG,
           "--setenv", "TP_DATA_DIR", "/data", "--setenv", "TP_OUT_DIR", "/work/out",
-          "Rscript", "--vanilla", "/tp/runner.R", "program.R"]
+          "Rscript", "--vanilla", "/tp/" + script[0], *script[1:]]
     return a
 
 
-def _command(run_dir: Path, data_dir: Path, var_dir: Path) -> list[str]:
+def _command(run_dir: Path, data_dir: Path, var_dir: Path, script: list[str] | None = None) -> list[str]:
+    """The sandboxed command for an R script in server/r (default: runner.R on program.R), run in run_dir."""
+    script = script or ["runner.R", "program.R"]
     if BACKEND == "bwrap":
-        return _bwrap(run_dir, data_dir)
+        return _bwrap(run_dir, data_dir, script)
     if BACKEND == "docker":
         return ["docker", "run", "--rm", "--network", "none", "--memory", "2g", "--cpus", "2", "--pids-limit", str(NPROC),
                 "-v", f"{run_dir}:/run", "-v", f"{data_dir}:/data:ro", "-v", f"{R_DIR}:/tp:ro",
                 "-e", "TP_DATA_DIR=/data", "-e", "TP_OUT_DIR=/run/out", "-e", "TMPDIR=/run/tmp",
-                "-w", "/run", DOCKER_IMAGE, "Rscript", "--vanilla", "/tp/runner.R", "program.R"]
+                "-w", "/run", DOCKER_IMAGE, "Rscript", "--vanilla", "/tp/" + script[0], *script[1:]]
     if BACKEND == "sandbox":
         return ["sandbox-exec", "-D", f"RUN_DIR={run_dir}", "-D", f"DATA_DIR={data_dir}", "-D", f"R_DIR={R_DIR}",
                 "-D", f"HOME_DIR={Path.home().resolve()}", "-D", f"VAR_DIR={var_dir.resolve()}", "-D", f"APP_DIR={APP_DIR}",
-                "-f", str(R_DIR / "sandbox.sb"), "Rscript", "--vanilla", str(R_DIR / "runner.R"), "program.R"]
+                "-f", str(R_DIR / "sandbox.sb"), "Rscript", "--vanilla", str(R_DIR / script[0]), *script[1:]]
     raise IsolationError(f"unknown executor backend {BACKEND!r}; refusing to run R without a sandbox")
 
 
@@ -235,6 +237,29 @@ class Executor:
             "packages": result.get("packages"),
         }
         return RunResult(run_id, status == "succeeded", status, "".join(console), result, tables, time.time() - t0, prov)
+
+    async def ingest(self, stage: Path, source: str, fmt: str) -> tuple[int, str]:
+        """Parse an uploaded file with ingest.R inside the same sandbox and limits as programs. `stage` holds only
+        the uploaded file (`source`); the parsed output is written to stage/parsed. Returns (exit code, stderr)."""
+        if not self.allowed():
+            raise IsolationError("dataset parsing is disabled: the sandbox has not passed its isolation self-test "
+                                 f"({self.isolation['status']}).")
+        stage = stage.resolve()
+        empty = stage / "nodata"
+        empty.mkdir(exist_ok=True)
+        (stage / "tmp").mkdir(exist_ok=True)
+        env = {"PATH": os.environ["PATH"], "HOME": str(stage), "TMPDIR": str(stage / "tmp"), "LANG": LANG}
+        async with self.slots:
+            proc = await asyncio.create_subprocess_exec(
+                *_command(stage, empty, self.var_dir, ["ingest.R", source, fmt, "parsed"]), cwd=stage, env=env,
+                start_new_session=True, preexec_fn=_limits, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            try:
+                _, err = await asyncio.wait_for(proc.communicate(), TIMEOUT)
+            except asyncio.TimeoutError:
+                self._kill(proc)
+                await proc.wait()
+                return -1, f"parsing timed out after {TIMEOUT}s"
+        return proc.returncode, err.decode(errors="replace")[-2000:]
 
     async def self_test(self, db_path: Path) -> dict:
         """Run a probe program inside the sandbox and record whether isolation holds. Sets self.isolation."""

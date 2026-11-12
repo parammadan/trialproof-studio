@@ -33,14 +33,14 @@ bus = Bus(store)
 studio = Studio(store, bus, Executor(VAR))
 agent = Agent(studio)
 
-# Public demo mode (TP_PUBLIC=1): pilot data only, model settings fixed by the server, per-visitor rate limits
+# Public demo mode (TP_PUBLIC=1): model settings fixed by the server, per-visitor rate limits; uploads are parsed in the sandbox
 PUBLIC = os.environ.get("TP_PUBLIC") == "1"
 # The only client address the server trusts: a header set by the operator's proxy (e.g. Fly's fly-client-ip,
 # which the proxy overwrites), else the TCP peer. X-Forwarded-For is client-controlled and never used.
 IP_HEADER = os.environ.get("TP_CLIENT_IP_HEADER", "").strip().lower()
 COOKIE = "tp_session"
 LIMITS = {"run": (40, 3600), "messages": (20, 3600), "workspaces": (10, 3600), "session": (20, 3600),
-          "write": (300, 3600)}  # (requests, per seconds), per client IP and per session
+          "datasets": (30, 3600), "write": (300, 3600)}  # (requests, per seconds), per client IP and per session
 _hits: dict[tuple, deque] = defaultdict(deque)
 WS_PATH = re.compile(r"^/api/workspaces/([^/]+)")
 R_VERSION = (lambda r: (r.stdout or r.stderr).strip())(subprocess.run(["Rscript", "--version"], capture_output=True, text=True))
@@ -104,9 +104,9 @@ async def guard(request: Request, call_next):
         store.x("insert into sessions values(?,?,?)", (sid, ip, time.time()))
     request.state.session, request.state.ip = sid, ip
     if PUBLIC and request.method != "GET":
-        if path.startswith("/api/settings") or (path.endswith("/datasets") and request.method == "POST"):
+        if path.startswith("/api/settings"):
             return _json(403, "not available in the public demo")
-        kind = next((k for k in ("run", "messages", "workspaces") if path.rstrip("/").endswith(k)), None)
+        kind = next((k for k in ("run", "messages", "workspaces", "datasets") if path.rstrip("/").endswith(k)), None)
         for k in ([kind] if kind else []) + ["write"]:
             for key in (("ip", ip), ("session", sid)):
                 if not _hit(key, k):
@@ -235,17 +235,28 @@ def workspace(wid: str):
 async def upload(wid: str, files: list[UploadFile] = File(...)):
     ws_or_404(wid)
     done, errors = [], []
-    for f in files:
+    for f in files[:dsets.MAX_DATASETS]:
+        too_big = False
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(f.filename or "").suffix) as tmp:
-            tmp.write(await f.read())
+            size = 0
+            while chunk := await f.read(1 << 20):  # stream to disk; stop at the size limit
+                size += len(chunk)
+                if size > dsets.MAX_UPLOAD_BYTES:
+                    too_big = True
+                    break
+                tmp.write(chunk)
         try:
-            d = await dsets.ingest(store, wid, Path(tmp.name), f.filename or "data.csv")
+            if too_big:
+                raise dsets.IngestError(f"{f.filename}: larger than the {dsets.MAX_UPLOAD_BYTES // 2**20} MB limit")
+            d = await dsets.ingest(store, wid, Path(tmp.name), f.filename or "data.csv", ex=studio.ex)
             done.append(d)
             bus.emit(wid, "dataset_added", **d)
         except dsets.IngestError as e:
             errors.append({"file": f.filename, "error": str(e)})
         except asyncio.TimeoutError:
             errors.append({"file": f.filename, "error": "parsing timed out"})
+        except IsolationError as e:
+            raise HTTPException(503, str(e))
         finally:
             Path(tmp.name).unlink(missing_ok=True)
     return {"datasets": done, "errors": errors}
@@ -255,7 +266,9 @@ async def upload(wid: str, files: list[UploadFile] = File(...)):
 async def pilot(wid: str):
     ws_or_404(wid)
     try:
-        out = await dsets.load_pilot(store, wid)
+        out = await dsets.load_pilot(store, wid, ex=studio.ex)
+    except IsolationError as e:
+        raise HTTPException(503, str(e))
     except Exception as e:
         raise HTTPException(502, f"could not load the CDISC pilot data: {e}")
     for d in out:
@@ -439,6 +452,13 @@ def export(wid: str, run_id: str | None = None):
         bad(e)
     return Response(data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="trialproof-{wid}.zip"'})
+
+
+@app.get("/api/workspaces/{wid}/log")
+def event_log(wid: str, after: int = 0, limit: int = 2000):
+    """The workspace's event log after an event id, as JSON (the same events the live stream sends)."""
+    ws_or_404(wid)
+    return store.events(wid, after)[: max(1, min(limit, 5000))]
 
 
 @app.get("/api/workspaces/{wid}/events")

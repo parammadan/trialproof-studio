@@ -38,7 +38,7 @@ def _studio(tmp_path, monkeypatch):
 def pilot(tmp_path, monkeypatch):
     store, st = _studio(tmp_path, monkeypatch)
     wid = store.create_workspace("pilot")["id"]
-    asyncio.run(dsets.load_pilot(store, wid))
+    asyncio.run(dsets.load_pilot(store, wid, ex=st.ex))
     assert st.propose_spec(wid, SPEC, "safety", by="user")["ok"]
     return store, st, wid
 
@@ -235,7 +235,7 @@ def synthetic(tmp_path, monkeypatch):
     store, st = _studio(tmp_path, monkeypatch)
     wid = store.create_workspace("synthetic")["id"]
     for f in ("dm.csv", "aev.csv"):
-        asyncio.run(dsets.ingest(store, wid, FIX / "synthetic" / f, f))
+        asyncio.run(dsets.ingest(store, wid, FIX / "synthetic" / f, f, ex=st.ex))
     return store, st, wid
 
 
@@ -379,7 +379,7 @@ def test_15b_dataset_change_makes_verification_stale(synthetic, tmp_path):
     assert st.verification_state(wid)["state"] == "verified"
     changed = tmp_path / "dm.csv"
     changed.write_text((FIX / "synthetic" / "dm.csv").read_text().replace("P07,Control,Y", "P07,Control,N"))
-    asyncio.run(dsets.ingest(store, wid, changed, "dm.csv"))
+    asyncio.run(dsets.ingest(store, wid, changed, "dm.csv", ex=st.ex))
     s = st.verification_state(wid)
     assert s["state"] == "stale" and "DM" in s["reasons"][0]
 

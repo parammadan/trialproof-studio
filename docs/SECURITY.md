@@ -36,9 +36,15 @@ every check passes, every run is refused with HTTP 503 ("R execution is disabled
 (`execution.enabled`, `execution.self_test`, and each check). `TP_ALLOW_UNISOLATED=1` overrides this for local
 development only; never set it on a public server.
 
-Uploaded files are parsed by `Rscript ingest.R` **outside** the sandbox. Uploads are therefore disabled in public mode
-(only the PhUSE pilot files, checked against pinned SHA-256 hashes, are loaded). Do not enable uploads on a public
-server until ingest also runs in the sandbox.
+Uploaded files are untrusted input to R's readers (an `.rds` file is a serialized R object), so they are parsed by
+`ingest.R` **inside the same sandbox and limits** (`Executor.ingest`): the sandbox sees only a staging folder holding
+the uploaded file and writes the parsed copy there; the server then moves it into the workspace. Parsing is refused
+(HTTP 503) until the self-test has passed, exactly like runs. Uploads are streamed to disk and capped
+(`TP_UPLOAD_MB`, default 25 MB per file), a workspace holds at most `TP_MAX_DATASETS` (default 12) datasets, only
+`.csv`, `.xpt` and `.rds` are accepted, and in public mode uploads count against an hourly limit (30 per address and
+per session). The PhUSE pilot files are checked against pinned SHA-256 hashes and go through the same sandboxed parse.
+The public page tells visitors not to upload real participant data: the server is shared, and the agent sends column
+names, labels and value counts to the model provider.
 
 ### 2. Sessions and workspace ownership (`server/tp/main.py`, `guard`)
 
@@ -56,7 +62,7 @@ The client address is the value of `TP_CLIENT_IP_HEADER` (on Fly: `fly-client-ip
 overwrites) or else the TCP peer. `X-Forwarded-For` and similar headers are never used, and uvicorn is started with
 `--no-proxy-headers` so it does not rewrite the peer address from them either. In public mode every write is counted
 per client address **and** per session over a sliding hour: workspaces 10, runs 40, agent messages 20, new sessions
-20 (per address), any write 300.
+20 (per address), dataset uploads 30, any write 300.
 
 ### 4. Model budgets (`server/tp/agent.py`)
 
@@ -64,8 +70,11 @@ Per UTC day, counted in the `usage` table: agent turns (counted when a turn star
 (prompt + completion, added after every model step). Budgets apply per session, per client address and globally; the
 global token budget keeps a margin below the provider's own daily limit. A turn that would start over budget is
 refused (HTTP 429 and a visible `quota` message); a turn that crosses a token budget stops after the current step. A
-provider quota error is shown as a plain message, not raw JSON. Public-mode defaults: session 15 turns / 40,000 tokens,
-address 30 / 80,000, global 150,000 tokens. Set them with `TP_BUDGET_{SESSION,IP,GLOBAL}_{TURNS,TOKENS}` (0 =
+provider quota error is shown as a plain message, not raw JSON. Public-mode defaults in code: session 15 turns /
+40,000 tokens, address 30 / 80,000, global 150,000 tokens. The deployed demo (`fly.toml`) sets session 25 / 100,000,
+address 40 / 150,000 and global 330,000, because one complete workflow measured 60,000-200,000 tokens with real models
+(Milestone 3). If `TP_LLM_FALLBACK_MODEL` is set, a provider daily-quota error switches the rest of the turn to that
+model, and the switch is shown in the chat. Set budgets with `TP_BUDGET_{SESSION,IP,GLOBAL}_{TURNS,TOKENS}` (0 =
 unlimited; local servers default to unlimited).
 
 ### 5. Credentials
