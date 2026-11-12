@@ -96,12 +96,23 @@ async def load_pilot(store: Store, wid: str) -> list[dict]:
     return out
 
 
+NAME_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+
+
+def ds_dir(store: Store, wid: str, name: str) -> Path:
+    """A dataset's folder inside this workspace. Names come from the user and the model, so anything that is
+    not a plain dataset name (e.g. "../other-workspace") is refused."""
+    if not NAME_RE.match(name or ""):
+        raise FileNotFoundError(f"no dataset named {name!r}")
+    return store.ws_path(wid) / "datasets" / name
+
+
 def profile(store: Store, wid: str, name: str) -> dict:
-    return json.loads((store.ws_path(wid) / "datasets" / name / "profile.json").read_text())
+    return json.loads((ds_dir(store, wid, name) / "profile.json").read_text())
 
 
 def read_rows(store: Store, wid: str, name: str) -> list[dict]:
-    with open(store.ws_path(wid) / "datasets" / name / "data.csv", newline="") as f:
+    with open(ds_dir(store, wid, name) / "data.csv", newline="") as f:
         return list(csv.DictReader(f))
 
 

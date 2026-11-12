@@ -31,6 +31,8 @@ create table if not exists approvals(id text primary key, ws_id text, run_id tex
 create table if not exists chat(id integer primary key, ws_id text, message text);
 create table if not exists events(id integer primary key, ws_id text, ts real, kind text, payload text);
 create table if not exists settings(key text primary key, value text);
+create table if not exists sessions(id text primary key, ip text, created_at real);
+create table if not exists usage(key text, day text, turns int, tokens int, primary key(key, day));
 """
 
 
@@ -42,6 +44,10 @@ class Store:
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # additive migration: workspaces created before sessions existed keep owner NULL (local legacy only)
+        if "owner" not in {r[1] for r in self.db.execute("pragma table_info(workspaces)")}:
+            self.db.execute("alter table workspaces add column owner text")
+            self.db.commit()
         self.lock = threading.Lock()
 
     def q(self, sql: str, args=()) -> list[dict]:
@@ -59,9 +65,9 @@ class Store:
             return cur.lastrowid
 
     # workspaces
-    def create_workspace(self, name: str) -> dict:
+    def create_workspace(self, name: str, owner: str | None = None) -> dict:
         wid = uuid.uuid4().hex[:10]
-        self.x("insert into workspaces values(?,?,?)", (wid, name, time.time()))
+        self.x("insert into workspaces(id, name, created_at, owner) values(?,?,?,?)", (wid, name, time.time(), owner))
         (WS_DIR / wid / "datasets").mkdir(parents=True, exist_ok=True)
         (WS_DIR / wid / "runs").mkdir(parents=True, exist_ok=True)
         return self.one("select * from workspaces where id=?", (wid,))
@@ -103,6 +109,14 @@ class Store:
 
     def set_setting(self, key: str, value):
         self.x("insert into settings values(?,?) on conflict(key) do update set value=excluded.value", (key, json.dumps(value)))
+
+    # usage budgets (per session, per client IP, global), by UTC day
+    def usage(self, key: str, day: str) -> dict:
+        return self.one("select turns, tokens from usage where key=? and day=?", (key, day)) or {"turns": 0, "tokens": 0}
+
+    def add_usage(self, key: str, day: str, turns: int = 0, tokens: int = 0):
+        self.x("insert into usage values(?,?,?,?) on conflict(key, day) do update set turns=turns+excluded.turns, "
+               "tokens=tokens+excluded.tokens", (key, day, turns, tokens))
 
     # events
     def add_event(self, wid: str, kind: str, payload: dict) -> dict:
