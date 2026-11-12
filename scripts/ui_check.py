@@ -12,7 +12,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "server" / "tests"), str(ROOT / "server")]
-from test_flow import SPEC, TEAE_R  # noqa: E402
+from tp.example import SPEC, TEAE_R  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--api", default="http://localhost:8765")
@@ -42,7 +42,8 @@ with sync_playwright() as p:
     ok("datasets listed", pg.get_by_text("ADAE", exact=False).count() > 0)
     pg.screenshot(path=f"{OUT}/1_workspace.png")
 
-    c = httpx.Client(base_url=API, timeout=60)
+    # the same session as the browser: workspaces belong to the session that created them
+    c = httpx.Client(base_url=API, timeout=60, cookies={k["name"]: k["value"] for k in pg.context.cookies() if k["name"] == "tp_session"})
     c.post(f"/api/workspaces/{wid}/specs", json={"spec": SPEC, "rationale": "safety population"}).raise_for_status()
     c.post(f"/api/workspaces/{wid}/programs", json={"code": TEAE_R}).raise_for_status()
     pg.wait_for_timeout(1500)

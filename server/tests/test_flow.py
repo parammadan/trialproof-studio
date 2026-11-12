@@ -39,6 +39,14 @@ def script(*steps):
     return fake
 
 
+def verified_executor(var, store):
+    """An executor whose sandbox has passed its own isolation self-test (runs are refused otherwise)."""
+    ex = Executor(var)
+    iso = asyncio.run(ex.self_test(store.path))
+    assert iso["verified"], iso
+    return ex
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr("tp.store.WS_DIR", tmp_path / "ws")
@@ -47,7 +55,7 @@ def env(tmp_path, monkeypatch):
     store.set_setting("llm", {"base_url": "http://127.0.0.1:9/v1", "model": "stand-in"})
     store.set_setting("acked_hosts", ["127.0.0.1:9"])
     bus = Bus(store)
-    st = Studio(store, bus, Executor())
+    st = Studio(store, bus, verified_executor(tmp_path, store))
     ws = store.create_workspace("test")
     asyncio.run(dsets.load_pilot(store, ws["id"]))
     return store, st, Agent(st), ws["id"]
@@ -168,7 +176,7 @@ def test_runs_with_workspace_under_home(tmp_path):
         old = S.WS_DIR
         S.WS_DIR = base / "ws"
         try:
-            st = Studio(store, Bus(store), Executor())
+            st = Studio(store, Bus(store), verified_executor(base, store))
             wid = store.create_workspace("home")["id"]
             asyncio.run(dsets.load_pilot(store, wid))
             st.propose_spec(wid, SPEC, "", by="user")
