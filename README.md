@@ -7,6 +7,11 @@ specification and compares them cell by cell. A human signs off.
 
 > Not validated software. Not for regulatory submission or clinical decision-making.
 
+**Live demo:** https://trialproof-studio.fly.dev (public CDISC pilot data only, uploads off). The agent there runs on
+Groq's free tier (`openai/gpt-oss-120b`), so it pauses when the free per-minute token limit is reached and the pauses
+are shown. *Open the worked example* loads an approved spec and a hand-written program (labelled as such) so the
+independent verification can be run without the model. The machine stops when idle; workspaces are temporary.
+
 ## Run it
 
 ```sh
@@ -104,6 +109,10 @@ Qwen2.5-Coder-32B-Instruct-AWQ on one A100 (vLLM), 2 trials per bug and mode, 20
 | + spec-vs-code facts, fix nudge, in-turn context trim | 8/12 | 12/12 | 20/24 |
 | + write guards, diff in validation, output-limit nudge | 8/12 | 9/11 | 17/23 |
 | + `edit_program` (exact text replacement) | 11/12 | 11/12 | 22/24 |
+
+On the live demo (Groq `openai/gpt-oss-120b`, free tier, one trial each, 2026-11-12), the denominator and PT-count bugs
+were fixed 4/4 (warm 2/2, cold 2/2, 68–199 s each, mostly rate-limit waits), and the full scripted session
+(`scripts/demo_e2e.py`) passed: 417/417, a new spec for the efficacy population at 405/405, and an injected error fixed.
 
 With 2 trials per cell, runs differ by 2–3 fixes on their own, so read the trend, not single rows. In no trial did
 validation pass a wrong table, and the approved spec never changed. Trials where the model could not be reached
