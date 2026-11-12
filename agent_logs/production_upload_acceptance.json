@@ -1,0 +1,46 @@
+{
+ "api": "https://trialproof-studio.fly.dev",
+ "workspace": "8863ed0bbe",
+ "results": [
+  {
+   "check": "uploads accepted in public mode and parsed in the sandbox",
+   "pass": true,
+   "detail": "{\"datasets\":[{\"id\":\"eaff92f717\",\"name\":\"DM\",\"filename\":\"dm.csv\",\"format\":\"csv\",\"sha256\":\"538b36dceea1c5c8da45c33690c9eb3efbe4534cf37086ac49b818a7717e6321\",\"nrow\":8,\"ncol\":5,\"source\":\"upload\"},{\"id\":\"1"
+  },
+  {
+   "check": "a spec over data with blank SOC/PT is refused without an uncoded rule",
+   "pass": true,
+   "detail": "{\"detail\":\"2 qualifying event records in AEV have a blank BODYSYS or TERM; the specification must say how to treat them: \\\"uncoded\\\": {\\\"handling\\\": \\\"label\\\", "
+  },
+  {
+   "check": "unfamiliar layout (DM/AEV, PID, ARMGRP, BODYSYS/TERM), uncoded = label: verified",
+   "pass": true,
+   "detail": "14 passed, 0 mismatch"
+  },
+  {
+   "check": "unfamiliar layout (DM/AEV, PID, ARMGRP, BODYSYS/TERM), uncoded = exclude: verified",
+   "pass": true,
+   "detail": "11 passed, 0 mismatch"
+  },
+  {
+   "check": "an error on uploaded data is caught (events counted as subjects)",
+   "pass": true,
+   "detail": "3 cells do not match the independent reference"
+  },
+  {
+   "check": "files over the size limit are refused",
+   "pass": true,
+   "detail": "big.csv: larger than the 25 MB limit"
+  },
+  {
+   "check": "other file types are refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "another session cannot read the uploaded data",
+   "pass": true,
+   "detail": ""
+  }
+ ]
+}

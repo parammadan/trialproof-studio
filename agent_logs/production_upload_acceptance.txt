@@ -1,0 +1,10 @@
+PASS uploads accepted in public mode and parsed in the sandbox  ({"datasets":[{"id":"eaff92f717","name":"DM","filename":"dm.csv","format":"csv","sha256":"538b36dceea1c5c8da45c33690c9eb3efbe4534cf37086ac49b818a7717e6321","nrow":8,"ncol":5,"source":"upload"},{"id":"1)
+PASS a spec over data with blank SOC/PT is refused without an uncoded rule  ({"detail":"2 qualifying event records in AEV have a blank BODYSYS or TERM; the specification must say how to treat them: \"uncoded\": {\"handling\": \"label\", )
+PASS unfamiliar layout (DM/AEV, PID, ARMGRP, BODYSYS/TERM), uncoded = label: verified  (14 passed, 0 mismatch)
+PASS unfamiliar layout (DM/AEV, PID, ARMGRP, BODYSYS/TERM), uncoded = exclude: verified  (11 passed, 0 mismatch)
+PASS an error on uploaded data is caught (events counted as subjects)  (3 cells do not match the independent reference)
+PASS files over the size limit are refused  (big.csv: larger than the 25 MB limit)
+PASS other file types are refused
+PASS another session cannot read the uploaded data
+
+8/8 checks passed

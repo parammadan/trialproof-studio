@@ -1,0 +1,213 @@
+{
+ "api": "https://trialproof-studio.fly.dev",
+ "started": "2026-11-12T21:33:17Z",
+ "health": {
+  "r": "Rscript (R) version 4.5.1 (2025-06-13)",
+  "executor": "bwrap",
+  "isolation": "Linux namespaces (bubblewrap), no network",
+  "public": true,
+  "execution": {
+   "enabled": true,
+   "self_test": "passed",
+   "verified": true,
+   "checks_passed": {
+    "read_own_dataset": true,
+    "write_own_output": true,
+    "read_database": true,
+    "read_app_source": true,
+    "list_app_dir": true,
+    "read_other_workspace": true,
+    "write_app_source_dir": true,
+    "write_data_root": true,
+    "write_own_dataset": true,
+    "env_canary": true,
+    "proc_canary": true,
+    "network_tcp": true,
+    "network_http": true,
+    "canary_not_in_output": true
+   }
+  },
+  "budgets": {
+   "session": {
+    "turns": 25,
+    "tokens": 100000
+   },
+   "ip": {
+    "turns": 40,
+    "tokens": 150000
+   },
+   "global": {
+    "turns": 0,
+    "tokens": 330000
+   }
+  },
+  "llm": {
+   "base_url": "https://api.groq.com/openai/v1",
+   "model": "openai/gpt-oss-120b",
+   "has_key": true,
+   "configured": true,
+   "host": "api.groq.com"
+  },
+  "acked_hosts": [
+   "api.groq.com"
+  ]
+ },
+ "probe": {
+  "status": "succeeded",
+  "error": null,
+  "facts": {
+   "read_own_dataset": "TRUE",
+   "read_database": "FALSE",
+   "write_database_dir": "FALSE",
+   "read_app_source": "FALSE",
+   "list_app_dir": "FALSE",
+   "write_app_source_dir": "FALSE",
+   "read_other_workspace": "FALSE",
+   "list_workspaces": "FALSE",
+   "env_has_secret": "FALSE",
+   "proc_has_secret": "FALSE",
+   "proc_pids_visible": "2",
+   "network_tcp": "FALSE",
+   "network_http": "FALSE",
+   "write_own_dataset": "FALSE"
+  }
+ },
+ "rate_limit_codes": [
+  200,
+  200,
+  200,
+  200,
+  200,
+  200,
+  429,
+  429,
+  429,
+  429,
+  429,
+  429
+ ],
+ "results": [
+  {
+   "check": "execution enabled only after a passing self-test",
+   "pass": true,
+   "detail": "passed"
+  },
+  {
+   "check": "isolation backend",
+   "pass": true,
+   "detail": "Linux namespaces (bubblewrap), no network"
+  },
+  {
+   "check": "worked example runs and verifies (417 passed, 0 mismatches)",
+   "pass": true,
+   "detail": "succeeded, 417 passed, 0 mismatch"
+  },
+  {
+   "check": "probe program ran",
+   "pass": true,
+   "detail": "succeeded"
+  },
+  {
+   "check": "R can read its own dataset",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "R can write its output (probe table emitted)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "R cannot: read database",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: write database dir",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: read app source",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: list app dir",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: write app source dir",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: read other workspace",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: list workspaces",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: env has secret",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: proc has secret",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: network tcp",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: network http",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R cannot: write own dataset",
+   "pass": true,
+   "detail": "FALSE"
+  },
+  {
+   "check": "R sees only its own processes",
+   "pass": true,
+   "detail": "2 pids visible"
+  },
+  {
+   "check": "another session gets 404 on every workspace endpoint",
+   "pass": true,
+   "detail": "{\"GET \": 404, \"GET /events\": 404, \"GET /export\": 404, \"GET /runs\": 404, \"GET /datasets/ADSL/rows\": 404, \"POST /programs\": 404, \"POST /run\": 404, \"POST /messages\": 404, \"POST /example\": 404, \"POST /signoff\": 404}"
+  },
+  {
+   "check": "another session's list does not include the workspace",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "a forged session cookie gets 404",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "the workspace was not changed by the other session",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "spoofed client-IP headers do not bypass the workspace limit (10/hour)",
+   "pass": true,
+   "detail": "[200, 200, 200, 200, 200, 200, 429, 429, 429, 429, 429, 429]"
+  }
+ ],
+ "passed": 24,
+ "failed": 0
+}
