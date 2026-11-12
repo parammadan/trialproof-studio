@@ -9,7 +9,7 @@ B=$(mktemp -d)
 cd "$ROOT"
 git ls-files -z | xargs -0 -I{} rsync -R "{}" "$B/"   # tracked files only: no data, no var/, no secrets
 cp deploy/hf_README.md "$B/README.md"
-hf repo create "$SPACE" --repo-type space --space_sdk docker --exist-ok >/dev/null
+hf repos create "$SPACE" --repo-type space --space-sdk docker --public --exist-ok >/dev/null
 hf upload "$SPACE" "$B" . --repo-type space --commit-message "deploy $(git rev-parse --short HEAD)"
 rm -rf "$B"
 echo "https://huggingface.co/spaces/$SPACE"
