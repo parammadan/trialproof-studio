@@ -14,12 +14,16 @@ primary_region = "iad"
   TP_LLM_MAX_TOKENS = "2048"
   # Fly's proxy sets (and overwrites) fly-client-ip; X-Forwarded-For is never trusted
   TP_CLIENT_IP_HEADER = "fly-client-ip"
-  # model budgets per UTC day (Groq's free tier allows 200k tokens/day for the whole key)
-  TP_BUDGET_SESSION_TURNS = "15"
-  TP_BUDGET_SESSION_TOKENS = "40000"
-  TP_BUDGET_IP_TURNS = "30"
-  TP_BUDGET_IP_TOKENS = "80000"
-  TP_BUDGET_GLOBAL_TOKENS = "150000"
+  # when the main model's daily quota is used up, continue (visibly) on this one; it has its own daily quota
+  TP_LLM_FALLBACK_MODEL = "openai/gpt-oss-20b"
+  # model budgets per UTC day. Groq's free tier gives each model 200k tokens/day; one full workflow (inspect, spec,
+  # program, run, fix, rerun) measured 60k-200k tokens, so a session gets enough for one, and the global cap stays
+  # below the two models' combined daily quota
+  TP_BUDGET_SESSION_TURNS = "25"
+  TP_BUDGET_SESSION_TOKENS = "100000"
+  TP_BUDGET_IP_TURNS = "40"
+  TP_BUDGET_IP_TOKENS = "150000"
+  TP_BUDGET_GLOBAL_TOKENS = "330000"
 
 [http_service]
   internal_port = 7860
