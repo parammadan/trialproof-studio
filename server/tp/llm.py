@@ -5,11 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 from urllib.parse import urlparse
 
 import httpx
+
+MAX_WAIT = 65     # longest rate-limit wait (s) the client sits out; longer ones (e.g. a daily cap) are errors
+MAX_WAITS = 8
 
 
 @dataclass
@@ -73,7 +77,7 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
     headers = {"Content-Type": "application/json"}
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
-    attempt = 0
+    attempt = waits = 0
     while True:
         started = False
         try:
@@ -81,6 +85,12 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
                 async with client.stream("POST", f"{cfg.base_url}/chat/completions", json=body, headers=headers) as r:
                     if r.status_code >= 400:
                         text = (await r.aread()).decode(errors="replace")[:500]
+                        wait = retry_after(r.headers.get("retry-after"), text) if r.status_code == 429 else None
+                        if wait is not None and wait <= MAX_WAIT and waits < MAX_WAITS:
+                            waits += 1
+                            yield Delta("wait", text=f"{wait:.0f}")
+                            await asyncio.sleep(wait)
+                            continue
                         if r.status_code >= 500 and attempt < retries:
                             raise httpx.TransportError(f"HTTP {r.status_code}: {text}")
                         raise LLMError(f"model endpoint returned HTTP {r.status_code}: {text}")
@@ -121,6 +131,20 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
                 raise LLMError(f"model endpoint unreachable at {cfg.base_url}: {e}") from e
             attempt += 1
             await asyncio.sleep(1.5 * attempt)
+
+
+def retry_after(header: str | None, text: str) -> float | None:
+    """Seconds to wait from a 429: the Retry-After header, or "try again in 1m2.5s" in the body."""
+    try:
+        if header:
+            return float(header) + 0.5
+    except ValueError:
+        pass
+    m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", text)
+    if not m or not any(m.groups()):
+        return None
+    h, mi, sec = (float(g or 0) for g in m.groups())
+    return h * 3600 + mi * 60 + sec + 0.5
 
 
 async def list_models(cfg: LLMConfig) -> list[str]:

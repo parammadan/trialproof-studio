@@ -258,6 +258,8 @@ class Agent:
                             piece = ps.feed(d.text)
                             if piece:
                                 self.bus.emit(wid, "code_delta", call_id=c.id, text=piece)
+                    elif d.kind == "wait":
+                        self.bus.emit(wid, "agent_wait", seconds=int(d.text))
                     elif d.kind == "done":
                         finish = d.finish_reason
                         for k in usage_total:
