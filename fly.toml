@@ -1,0 +1,29 @@
+# Public demo on Fly.io (same image as the Dockerfile). The machine stops when idle and starts on the next visit.
+#   fly deploy --remote-only        model key: fly secrets set TP_LLM_API_KEY=... (or in the Fly dashboard)
+app = "trialproof-studio"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TP_LLM_BASE_URL = "https://api.groq.com/openai/v1"
+  TP_LLM_MODEL = "openai/gpt-oss-120b"
+
+[http_service]
+  internal_port = 7860
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
