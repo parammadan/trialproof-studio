@@ -193,7 +193,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
     case 'start':
       return <div className="flex items-center gap-2 pt-1 text-[10px] uppercase tracking-wider text-fg-3"><span className="h-px flex-1 bg-line-soft" />{it.ev.payload.model} · {clock(it.ev.ts)}<span className="h-px flex-1 bg-line-soft" /></div>
     case 'end':
-      return <div className="pl-6 text-[10px] text-fg-3">done in {it.ev.payload.seconds}s{it.ev.payload.usage?.completion_tokens ? ` · ${it.ev.payload.usage.prompt_tokens.toLocaleString()} in / ${it.ev.payload.usage.completion_tokens.toLocaleString()} out tokens` : ''}</div>
+      return <div className="pl-6 text-[10px] text-fg-3">{OUTCOME[it.ev.payload.outcome as string] ?? 'done'} in {it.ev.payload.seconds}s{it.ev.payload.usage?.completion_tokens ? ` · ${it.ev.payload.usage.prompt_tokens.toLocaleString()} in / ${it.ev.payload.usage.completion_tokens.toLocaleString()} out tokens` : ''}</div>
     case 'agent_text':
       return <div className="flex gap-2 pt-1"><Bot className="mt-0.5 size-3.5 shrink-0 text-violet" /><div className="min-w-0 text-[12.5px] leading-relaxed text-fg"><Md text={it.ev.payload.text} /></div></div>
     case 'tool': {
@@ -251,7 +251,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
           <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-bad" />
           <div className="min-w-0 flex-1 break-words">{p.message}</div>
           {p.code === 'not_configured' && <Button size="xs" onClick={onSettings}><Settings2 /> Settings</Button>}
-          {(p.code === 'model' || p.code === 'steps' || p.code === 'length') && lastUser && <Button size="xs" disabled={busy} onClick={() => send(p.code === 'steps' ? 'Continue.' : lastUser.payload.text, lastUser.payload.context)}>{p.code === 'steps' ? 'Continue' : 'Retry'}</Button>}
+          {(p.code === 'model' || p.code === 'steps' || p.code === 'length' || p.code === 'incomplete' || p.code === 'empty') && lastUser && <Button size="xs" disabled={busy} onClick={() => send(p.code === 'model' || p.code === 'length' ? lastUser.payload.text : 'Continue.', lastUser.payload.context)}>{p.code === 'model' || p.code === 'length' ? 'Retry' : 'Continue'}</Button>}
         </div>
       )
     }
@@ -263,7 +263,7 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
       else if (kind === 'program_version') node = <><User className="size-3" /> You saved v{p.version}{p.previous ? ` (+${p.added} −${p.removed})` : ''}</>
       else if (kind === 'spec_decided') node = <><ListTree className="size-3" /> Spec v{p.version} {p.status}{p.note ? `: ${p.note}` : ''}</>
       else if (kind === 'signoff') node = <><ShieldCheck className="size-3" /> {p.reviewer} {p.decision === 'approved' ? 'signed off' : 'requested changes on'} program v{p.program_version}</>
-      else if (kind === 'agent_nudge') node = <><Play className="size-3" /> {p.reason === 'spec_as_text' ? 'Host: the agent wrote a spec as text; asked it to propose it for approval' : `Host: v${p.program_version} still has ${p.mismatches} mismatched cells; asked the agent to continue the fix`}</>
+      else if (kind === 'agent_nudge') node = <><Play className="size-3" /> Host: {p.label ?? (p.reason === 'spec_as_text' ? 'the agent wrote a spec as text; asked it to propose it for approval' : `v${p.program_version} still has ${p.mismatches} mismatched cells; asked the agent to continue the fix`)}</>
       else if (kind === 'agent_wait') node = <><Square className="size-3" /> Model rate limit: waiting {p.seconds} s before continuing</>
       else if (kind === 'validation') {
         const bad = (p.tables ?? []).reduce((a: number, t: { mismatch: number }) => a + t.mismatch, 0)
@@ -274,6 +274,11 @@ function Row({ it, wid, ws, busy, send, onSettings, onAck, onReveal, openSpec, o
       return <div className="flex items-center gap-1.5 pl-5 text-[11px] text-fg-3">{node}</div>
     }
   }
+}
+
+const OUTCOME: Record<string, string> = {
+  verified: 'finished · verified', done: 'finished', answered: 'answered', waiting_for_user: 'waiting for you',
+  incomplete: 'stopped before finishing', quota: 'stopped · AI quota', error: 'stopped · error', cancelled: 'stopped by you',
 }
 
 function AckCard({ host, onAck }: { host: string; onAck: () => void }) {

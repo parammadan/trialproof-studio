@@ -7,7 +7,7 @@ specification and compares them cell by cell. A human signs off.
 
 > Not validated software. Not for regulatory submission or clinical decision-making.
 
-**Live demo:** https://trialproof-studio.fly.dev (public CDISC pilot data only, uploads off). The agent there runs on
+**Live demo:** https://trialproof-studio.fly.dev (the public CDISC pilot, or upload your own compatible subject + adverse-event files, parsed in the sandbox; do not upload real participant data). The agent there runs on
 Groq's free tier (`openai/gpt-oss-120b`), so it pauses when the free per-minute token limit is reached and the pauses
 are shown. *Open the worked example* loads an approved spec and a hand-written program (labelled as such) so the
 independent verification can be run without the model. The machine stops when idle; workspaces are temporary.

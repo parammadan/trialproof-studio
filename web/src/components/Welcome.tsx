@@ -107,13 +107,15 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.08 }} className="mt-12 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
           {health?.public ? (
             <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel backdrop-blur-xl">
-              <div className="mb-1 text-[13px] font-semibold">Public demo</div>
-              <div className="text-xs leading-relaxed text-fg-3">
-                This copy runs on a shared public server with the public CDISC pilot study only. Uploading is turned off: do not
-                put real participant data into a public demo. Runs and agent requests are rate-limited per visitor, and other
-                visitors can open the workspaces listed here. The agent's model is {health.llm.configured ? `${health.llm.model} (${health.llm.host})` : 'not connected'}.
-                It is not validated for regulatory submission or clinical decisions.
+              <div className="mb-1 text-[13px] font-semibold">Public demo · bring a compatible dataset</div>
+              <div className="mb-3 text-xs leading-relaxed text-fg-3">
+                Upload a subject-level and an adverse-event dataset (.csv, .xpt or .rds, up to 25 MB each), or use the CDISC pilot.
+                Files are parsed inside the R sandbox. <b className="text-fg-2">Do not upload real participant data:</b> this is a shared
+                public server, and the agent sends column names, labels and value counts to {health.llm.configured ? `${health.llm.model} (${health.llm.host})` : 'its model'}.
+                Workspaces belong to your browser session and are temporary. Runs and agent requests are rate-limited.
+                Not validated for regulatory submission or clinical decisions.
               </div>
+              <Dropzone onFiles={create} busy={busy === 'upload'} />
             </div>
           ) : (
           <div className="rounded-2xl border border-line bg-surface p-5 shadow-panel backdrop-blur-xl">
