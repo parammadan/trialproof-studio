@@ -61,7 +61,7 @@ class ToolCall:
 
 @dataclass
 class Delta:
-    kind: str  # text | tool_start | tool_args | done
+    kind: str  # text | tool_start | tool_args | wait | rejected_call | done
     text: str = ""
     index: int = 0
     call: ToolCall | None = None
@@ -94,6 +94,11 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
                             continue
                         if r.status_code >= 500 and attempt < retries:
                             raise httpx.TransportError(f"HTTP {r.status_code}: {text}")
+                        gen = rejected_generation(text) if r.status_code == 400 else None
+                        if gen:
+                            yield Delta("rejected_call", text=gen)
+                            yield Delta("done", finish_reason="tool_calls")
+                            return
                         raise LLMError(f"model endpoint returned HTTP {r.status_code}: {text}")
                     calls: dict[int, ToolCall] = {}
                     finish, usage = None, {}
@@ -104,6 +109,17 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
                         if data == "[DONE]":
                             break
                         chunk = json.loads(data)
+                        if chunk.get("error"):
+                            # Some providers (Groq) report a failure inside an HTTP 200 stream, e.g. a tool call that
+                            # did not match its schema; dropping it would look like an empty reply
+                            err = json.dumps(chunk["error"])
+                            gen = rejected_generation(err)
+                            if gen:
+                                started = True
+                                yield Delta("rejected_call", text=gen)
+                                finish = "tool_calls"
+                                break
+                            raise LLMError(f"model endpoint reported an error in the stream (HTTP 400): {err[:500]}")
                         if chunk.get("usage"):
                             usage = chunk["usage"]
                         for ch in chunk.get("choices") or []:
@@ -132,6 +148,18 @@ async def stream_chat(cfg: LLMConfig, messages: list[dict], tools: list[dict], r
                 raise LLMError(f"model endpoint unreachable at {cfg.base_url}: {e}") from e
             attempt += 1
             await asyncio.sleep(1.5 * attempt)
+
+
+def rejected_generation(text: str) -> str | None:
+    """The model output behind a provider's tool_use_failed error (Groq's `failed_generation`), if present."""
+    try:
+        err = json.loads(text)
+    except ValueError:
+        return None
+    err = err.get("error", err) if isinstance(err, dict) else {}
+    if isinstance(err, dict) and err.get("code") == "tool_use_failed" and isinstance(err.get("failed_generation"), str):
+        return err["failed_generation"]
+    return None
 
 
 def retry_after(header: str | None, text: str) -> float | None:

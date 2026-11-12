@@ -11,6 +11,7 @@ import json
 import os
 import re
 import time
+import uuid
 import traceback
 
 from . import datasets as dsets
@@ -71,8 +72,12 @@ ops: eq, ne, in, not_in (value is a list), missing, not_missing, gt, ge, lt, le.
 
 
 def _fn(name, desc, props=None, required=None):
+    # Optional arguments also accept null: models often send {"columns": null} for "not given", and providers that
+    # validate calls against the schema (Groq) reject the whole call for it
+    props = {k: ({**v, "type": [v["type"], "null"]} if k not in (required or []) and isinstance(v.get("type"), str) else v)
+             for k, v in (props or {}).items()}
     return {"type": "function", "function": {"name": name, "description": desc, "parameters": {
-        "type": "object", "properties": props or {}, "required": required or []}}}
+        "type": "object", "properties": props, "required": required or []}}}
 
 
 COND = {"type": "object", "properties": {"var": {"type": "string"}, "op": {"type": "string"}, "value": {}}, "required": ["var", "op"]}
@@ -136,6 +141,27 @@ def _text_calls(text: str) -> list[tuple[dict, str]]:
     return out
 
 
+def _rejected_calls(gen: str) -> list[tuple[str, dict]]:
+    """Tool calls in a provider's failed_generation text, with null arguments removed."""
+    names = {t["function"]["name"] for t in TOOLS}
+    try:
+        obj = json.loads(gen)
+    except ValueError:
+        obj = [o for o, _ in _text_calls(gen)]
+    out = []
+    for o in obj if isinstance(obj, list) else [obj]:
+        if isinstance(o, dict) and o.get("name") in names:
+            args = o.get("arguments", o.get("parameters", {}))
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except ValueError:
+                    continue
+            if isinstance(args, dict):
+                out.append((o["name"], {k: v for k, v in args.items() if v is not None}))
+    return out[:MAX_CALLS]
+
+
 def _clip(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n // 2] + f"\n... [{len(s) - n} chars clipped] ...\n" + s[-n // 2:]
 
@@ -154,7 +180,15 @@ def _drop_code(args: str) -> str:
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS} - {"tabulate"}  # tabulate() is also base R
 SPECIAL = re.compile(r"<\|(?:im_start|im_end|endoftext)\|>")
 FIX_ASK = re.compile(r"\b(fix|correct|repair|resolve|debug)\w*", re.I)
-MAX_NUDGES = 2
+# A user message that asks the agent to do work (as opposed to a question about a result)
+WORK_ASK = re.compile(r"\b(approv|go ahead|continue|proceed|write|run|rerun|re-run|fix|correct|repair|debug|create|build|"
+                      r"make|generate|produce|update|change|use|switch|redo|try again|implement|do it|start)\w*", re.I)
+QUESTION = re.compile(r"^\s*(what|which|where|why|how|who|when|whose)\b", re.I)  # a question, not a request for work
+MAX_NUDGES = 3   # host prompts per turn that ask the model to finish unfinished work
+MAX_EMPTY = 2    # retries of an empty model reply per turn
+MAX_TOOL_RETRY = 2  # retries of a step the provider rejected as a malformed tool call
+MALFORMED = re.compile(r"tool_use_failed|Failed to call a function|failed_generation|parse.*tool call", re.I)
+FALLBACK_MODEL = os.environ.get("TP_LLM_FALLBACK_MODEL", "").strip()
 SPEC_BLOCK = re.compile(r'```(?:json)?\s*\{[^`]*"type"\s*:\s*"teae_summary"[^`]*"treatment_var"', re.S)
 
 
@@ -309,35 +343,40 @@ class Agent:
         t0 = time.time()
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0}
         pending_calls: list[dict] = []
-        nudges = 0
+        nudges = empties = tool_retries = 0
+        acted = False  # the agent wrote, edited or ran the program in this turn
+        work = bool(WORK_ASK.search(text)) and not QUESTION.search(text)
+        outcome = "answered"
+        ran: dict[tuple, int] = {}  # (tool, arguments) -> times run in this turn
+
+        def note(text_: str, reason: str, label: str, **extra):
+            """A visible host message to the model (stored as a user message so the model sees it)."""
+            self.store.add_chat(wid, {"role": "user", "content": "[TrialProof host] " + text_})
+            self.bus.emit(wid, "agent_nudge", text=text_, reason=reason, label=label, **extra)
+
         try:
             for step in range(MAX_STEPS):
                 text_buf, calls, code_streams = [], {}, {}
                 finish = None
-                async for d in stream_chat(cfg, self._messages(wid), TOOLS):
-                    if d.kind == "text":
-                        piece = SPECIAL.sub("", d.text)
-                        text_buf.append(piece)
-                        if piece:
-                            self.bus.emit(wid, "assistant_delta", text=piece)
-                    elif d.kind == "tool_start":
-                        calls[d.index] = d.call
-                        if d.call.name:
-                            self.bus.emit(wid, "tool_call_start", call_id=d.call.id, name=d.call.name)
-                    elif d.kind == "tool_args":
-                        c = d.call
-                        if c.name == "write_program":
-                            ps = code_streams.setdefault(d.index, PartialString("code"))
-                            piece = ps.feed(d.text)
-                            if piece:
-                                self.bus.emit(wid, "code_delta", call_id=c.id, text=piece)
-                    elif d.kind == "wait":
-                        self.bus.emit(wid, "agent_wait", seconds=int(d.text))
-                    elif d.kind == "done":
-                        finish = d.finish_reason
-                        for k in usage_total:
-                            usage_total[k] += (d.usage or {}).get(k, 0) or 0
-                        self._charge(who, tokens=sum((d.usage or {}).get(k, 0) or 0 for k in usage_total))
+                try:
+                    async for d in self._stream(wid, cfg, text_buf, calls, code_streams, usage_total, who):
+                        if d.kind == "done":
+                            finish = d.finish_reason
+                except LLMError as e:
+                    err = str(e)
+                    if "HTTP 400" in err and MALFORMED.search(err) and tool_retries < MAX_TOOL_RETRY:
+                        tool_retries += 1
+                        note("The model provider rejected your last tool call as malformed. Call one tool at a time with "
+                             "arguments that are a valid JSON object matching the tool's schema.", "malformed_call",
+                             "the model's tool call was malformed; asked it to retry")
+                        continue
+                    if ("HTTP 429" in err and PROVIDER_QUOTA.search(err) and FALLBACK_MODEL
+                            and cfg.model != FALLBACK_MODEL):
+                        self.bus.emit(wid, "agent_nudge", reason="fallback", label=(
+                            f"{cfg.model} is out of its daily quota; continuing with {FALLBACK_MODEL}"), text="")
+                        cfg = LLMConfig(**{**cfg.__dict__, "model": FALLBACK_MODEL})
+                        continue
+                    raise
                 content = "".join(text_buf)
                 if not calls:
                     # Some open models write their calls as text (Hermes <tool_call> tags, or bare JSON objects)
@@ -356,6 +395,19 @@ class Agent:
                         seen_calls.add(sig)
                 tool_calls = [{"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments or "{}"}}
                               for _, c in sorted(calls.items())]
+                if not tool_calls and not content.strip():
+                    # An empty reply (no text, no tool call) is not an answer: never end the turn on one silently
+                    left = self._unfinished(wid) if (work or acted) else None
+                    if empties < MAX_EMPTY:
+                        empties += 1
+                        note("Your last reply was empty. " + (left[1] if left else
+                             "Answer the user's last message briefly, or call the tool you need next."), "empty",
+                             "the model returned an empty reply; asked it to continue")
+                        continue
+                    outcome = "incomplete"
+                    self.bus.emit(wid, "agent_error", code="empty", message=(
+                        "The model returned empty replies, so the agent stopped." + (f" Still to do: {left[1]}" if left else "")))
+                    break
                 msg = {"role": "assistant", "content": content}
                 if tool_calls:
                     msg["tool_calls"] = tool_calls
@@ -363,28 +415,33 @@ class Agent:
                 if content.strip():
                     self.bus.emit(wid, "assistant_message", text=content)
                 if not tool_calls:
-                    if finish == "length" and not (self._mismatches(wid) and nudges < MAX_NUDGES and FIX_ASK.search(text)):
-                        self.bus.emit(wid, "agent_error", code="length", message="The model hit its output limit.")
-                        break
                     # The model wrote a specification as text instead of proposing it: nothing reached the user
                     if nudges < MAX_NUDGES and SPEC_BLOCK.search(content) and not self._spec_this_turn(wid, t0):
                         nudges += 1
-                        note = ("[TrialProof host] You wrote a specification in your message, but nothing was proposed. "
-                                "Call the propose_spec tool with that spec and a short rationale; the user approves it in the Spec tab.")
-                        self.store.add_chat(wid, {"role": "user", "content": note})
-                        self.bus.emit(wid, "agent_nudge", text=note, reason="spec_as_text")
+                        note("You wrote a specification in your message, but nothing was proposed. Call the propose_spec "
+                             "tool with that spec and a short rationale; the user approves it in the Spec tab.", "spec_as_text",
+                             "the agent wrote a spec as text; asked it to propose it for approval")
                         continue
-                    # The user asked for a fix and the model stopped while validation still fails: say so (visibly)
-                    # and let it continue, at most MAX_NUDGES times per turn
-                    left = self._mismatches(wid)
-                    if left and nudges < MAX_NUDGES and FIX_ASK.search(text):
+                    # The model stopped while the work it was asked to do (or started) is unfinished: tell it the
+                    # concrete next step, visibly, at most MAX_NUDGES times per turn; then say what is left
+                    left = self._unfinished(wid) if (work or acted or FIX_ASK.search(text)) else None
+                    if left and nudges < MAX_NUDGES:
                         nudges += 1
-                        note = ("[TrialProof host] Your last reply hit the output limit. Be brief. " if finish == "length" else "[TrialProof host] ") + (
-                                f"The latest run (program v{left[0]}) still has {left[1]} mismatched cells. "
-                                "Continue the fix: read_program, make the smallest change that explains the pattern facts, then run_program.")
-                        self.store.add_chat(wid, {"role": "user", "content": note})
-                        self.bus.emit(wid, "agent_nudge", text=note, program_version=left[0], mismatches=left[1])
+                        m = self._mismatches(wid)
+                        note(("Your last reply hit the output limit. Be brief. " if finish == "length" else "") + left[1],
+                             left[0], {"no_program": "no program yet", "not_run": "the program was not run",
+                                       "stale": "the result is out of date", "run_failed": "the run failed",
+                                       "mismatch": f"v{m[0]} still has {m[1]} mismatched cells" if m else "mismatches remain",
+                                       "not_verified": "no verified table yet"}[left[0]] + "; asked the agent to continue",
+                             **({"program_version": m[0], "mismatches": m[1]} if left[0] == "mismatch" and m else {}))
                         continue
+                    if finish == "length":
+                        outcome = "incomplete"
+                        self.bus.emit(wid, "agent_error", code="length", message="The model hit its output limit.")
+                    elif left:
+                        outcome = "incomplete"
+                        self.bus.emit(wid, "agent_error", code="incomplete", message=(
+                            f"The agent stopped before finishing. Still to do: {left[1]}"))
                     break
                 pending_calls = list(tool_calls)
                 paused = False
@@ -394,53 +451,149 @@ class Agent:
                         args = json.loads(tc["function"]["arguments"] or "{}")
                         if not isinstance(args, dict):
                             raise ValueError("arguments must be a JSON object")
+                        args = {k: v for k, v in args.items() if v is not None}  # null = not given
                     except (json.JSONDecodeError, ValueError) as e:
                         result = {"ok": False, "error": f"could not parse arguments as JSON: {e}"}
                         args = {}
                     else:
                         shown = {k: v for k, v in args.items() if k != "code"}
                         self.bus.emit(wid, "tool_call", call_id=tc["id"], name=name, args=shown)
-                        try:
-                            result = await self._tool(wid, name, args, tc["id"])
-                        except Exception as e:  # a tool failure goes back to the model, not up the stack
-                            result = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+                        sig = (name, json.dumps(args, sort_keys=True))
+                        ran[sig] = ran.get(sig, 0) + 1
+                        if ran[sig] > 2 and name not in ("run_program", "get_validation"):
+                            # a model stuck in a loop repeats one call; running it again cannot change the answer
+                            left = self._unfinished(wid)
+                            result = {"ok": False, "error": f"you already made this exact {name} call {ran[sig] - 1} times in this turn "
+                                      "and got the same result; it was not run again. " + (left[1] if left else
+                                      "Use the results you have, or answer the user.")}
+                        else:
+                            try:
+                                result = await self._tool(wid, name, args, tc["id"])
+                            except Exception as e:  # a tool failure goes back to the model, not up the stack
+                                result = {"ok": False, "error": f"{type(e).__name__}: {e}"}
                     self.bus.emit(wid, "tool_result", call_id=tc["id"], name=name, ok=result.get("ok", True),
                                   summary=self._summary(name, result))
                     self.store.add_chat(wid, {"role": "tool", "tool_call_id": tc["id"], "content": _clip(json.dumps(result, default=str), 6000)})
                     pending_calls.remove(tc)
                     paused = paused or (name in PAUSE and result.get("ok", True))
+                    acted = acted or name in ("write_program", "edit_program", "run_program")
                 if paused:
+                    outcome = "waiting_for_user"
                     break
                 quota = self.over_budget(who, check_turns=False)
                 if quota:
+                    outcome = "quota"
                     self.bus.emit(wid, "agent_error", code="quota", message=quota)
                     break
             else:
-                self.bus.emit(wid, "agent_error", code="steps", message=f"Stopped after {MAX_STEPS} steps; ask me to continue.")
+                outcome = "incomplete"
+                left = self._unfinished(wid)
+                self.bus.emit(wid, "agent_error", code="steps", message=f"Stopped after {MAX_STEPS} steps; ask me to continue."
+                              + (f" Still to do: {left[1]}" if left else ""))
         except asyncio.CancelledError:
             for tc in pending_calls:
                 self.store.add_chat(wid, {"role": "tool", "tool_call_id": tc["id"], "content": '{"ok": false, "error": "cancelled by the user"}'})
+            outcome = "cancelled"
             self.bus.emit(wid, "agent_cancelled")
             raise
         except LLMError as e:
+            outcome = "error"
             for tc in pending_calls:
                 self.store.add_chat(wid, {"role": "tool", "tool_call_id": tc["id"], "content": '{"ok": false, "error": "model failure"}'})
             if "HTTP 429" in str(e) and PROVIDER_QUOTA.search(str(e)):
+                outcome = "quota"
                 self.bus.emit(wid, "agent_error", code="quota", message=(
                     "The model provider's free quota for this demo is used up for now, so the agent cannot answer. "
                     "The worked example and your own R runs still work; please try the agent again later."), detail=str(e)[:400])
             else:
                 self.bus.emit(wid, "agent_error", code="model", message=str(e))
         except Exception as e:
+            outcome = "error"
             traceback.print_exc()
             self.bus.emit(wid, "agent_error", code="internal", message=f"{type(e).__name__}: {e}")
         finally:
-            self.bus.emit(wid, "agent_end", seconds=round(time.time() - t0, 1), usage=usage_total)
+            if outcome == "answered" and acted:
+                outcome = "verified" if self.studio.verification_state(wid)["state"] == "verified" else "done"
+            self.bus.emit(wid, "agent_end", seconds=round(time.time() - t0, 1), usage=usage_total, outcome=outcome,
+                          model=cfg.model)
+
+    async def _stream(self, wid, cfg, text_buf, calls, code_streams, usage_total, who):
+        """One model step: forward text, tool-call and code deltas to the UI as they arrive; collect them."""
+        async for d in stream_chat(cfg, self._messages(wid), TOOLS):
+            if d.kind == "text":
+                piece = SPECIAL.sub("", d.text)
+                text_buf.append(piece)
+                if piece:
+                    self.bus.emit(wid, "assistant_delta", text=piece)
+            elif d.kind == "tool_start":
+                calls[d.index] = d.call
+                if d.call.name:
+                    self.bus.emit(wid, "tool_call_start", call_id=d.call.id, name=d.call.name)
+            elif d.kind == "tool_args":
+                c = d.call
+                if c.name == "write_program":
+                    ps = code_streams.setdefault(d.index, PartialString("code"))
+                    piece = ps.feed(d.text)
+                    if piece:
+                        self.bus.emit(wid, "code_delta", call_id=c.id, text=piece)
+            elif d.kind == "wait":
+                self.bus.emit(wid, "agent_wait", seconds=int(d.text))
+            elif d.kind == "rejected_call":
+                # The provider refused the model's tool call (schema mismatch). Recover the call it meant, dropping
+                # null arguments; the tool itself still validates everything. Otherwise ask the model to retry.
+                got = _rejected_calls(d.text)
+                if not got:
+                    raise LLMError("model endpoint returned HTTP 400: tool_use_failed (could not recover the call)")
+                for name, args in got:
+                    i = len(calls)
+                    calls[i] = ToolCall(id=f"recovered_{uuid.uuid4().hex[:8]}", name=name, arguments=json.dumps(args))
+                    self.bus.emit(wid, "tool_call_start", call_id=calls[i].id, name=name)
+                self.bus.emit(wid, "agent_nudge", reason="recovered_call", text="", label=(
+                    f"the provider rejected the model's {', '.join(n for n, _ in got)} call over a null argument; "
+                    "ran it without the null arguments"))
+            elif d.kind == "done":
+                for k in usage_total:
+                    usage_total[k] += (d.usage or {}).get(k, 0) or 0
+                self._charge(who, tokens=sum((d.usage or {}).get(k, 0) or 0 for k in usage_total))
+            yield d
 
     _last_run_error: dict = {}
 
     def _spec_this_turn(self, wid: str, since: float) -> bool:
         return bool(self.store.one("select 1 from specs where ws_id=? and created_at>=?", (wid, since)))
+
+    def _unfinished(self, wid: str) -> tuple[str, str] | None:
+        """What still stands between the workspace and a current, verified result, as (code, next step), or None
+        when nothing is left for the agent (verified, waiting on the user, or no approved analysis yet)."""
+        spec = self.store.approved_spec(wid)
+        if not spec or self.store.one("select 1 from specs where ws_id=? and status='proposed'", (wid,)):
+            return None
+        prog = self.store.latest_program(wid)
+        if not prog:
+            return "no_program", (f"Specification v{spec['version']} is approved but there is no program yet. "
+                                  "Write it with write_program, then call run_program.")
+        run = self.studio.get_run(wid)
+        if not run:
+            return "not_run", f"Program v{prog['version']} has not been run. Call run_program."
+        vs = self.studio.verification_state(wid)
+        if vs["state"] in ("verified", "in_progress"):
+            return None
+        if vs["state"] == "stale":
+            return "stale", (f"The latest result is out of date ({'; '.join(vs['reasons'])}). If the approved specification "
+                             "changed, update the program to match it (read_program, then edit_program); then call run_program.")
+        if run["status"] != "succeeded":
+            res = run.get("result") or {}
+            where = f" at lines {res['line']}-{res.get('end_line') or res['line']}" if res.get("line") else ""
+            return "run_failed", (f"The run of program v{run['program_version']} {run['status']}{where}: "
+                                  f"{_clip(str(res.get('message') or 'see the console'), 400)}. Read the error, fix the program "
+                                  "with edit_program and call run_program again.")
+        if vs["state"] == "failed":
+            m = self._mismatches(wid)
+            return "mismatch", (f"The latest run (program v{m[0] if m else run['program_version']}) has {m[1] if m else 'some'} "
+                                "mismatched cells. Investigate (get_validation, then trace_cell or compare_with_last_passing), "
+                                "make the smallest change that explains the pattern with edit_program, then run_program.")
+        return "not_verified", ("The run produced no independently verified table. Emit the analysis with "
+                                'tp_emit_table(..., type = "teae_summary") as the system prompt describes, then run_program.')
 
     def _mismatches(self, wid: str) -> tuple[int, int] | None:
         run = self.studio.get_run(wid)
@@ -510,6 +663,11 @@ class Agent:
             if store.approved_spec(wid) and prev and emits(prev["code"]) and not emits(a["code"]):
                 return {"ok": False, "error": "this program no longer emits the teae_summary table, so it could not be validated. "
                         "Keep the analysis program whole and investigate with tabulate, trace_cell and compare_with_last_passing. Nothing was saved."}
+            if prev and prev["code"] == a["code"]:
+                left = self._unfinished(wid)
+                return {"ok": True, "version": prev["version"], "unchanged": True,
+                        "note": f"identical to the current program v{prev['version']}; nothing changed. "
+                                + (left[1] if left else "Call run_program to run it.")}
             p = st.save_program(wid, a["code"], "agent", a.get("summary", ""))
             diff = unified_diff(prev["code"], p["code"], prev["version"], p["version"]) if prev and prev["version"] != p["version"] else ""
             return {"ok": True, "version": p["version"], "lines": len(p["code"].splitlines()), "diff": _clip(diff, 2500) if diff else None}
@@ -588,7 +746,7 @@ class Agent:
         if name == "propose_spec":
             return f"spec v{r['version']} awaiting approval"
         if name in ("write_program", "edit_program"):
-            return f"program v{r['version']}, {r['lines']} lines"
+            return f"unchanged: still program v{r['version']}" if r.get("unchanged") else f"program v{r['version']}, {r['lines']} lines"
         if name == "run_program":
             v = r.get("validation") or []
             vs = "; ".join(f"{t['table_id']}: {t['passed']} passed, {t['mismatch']} mismatch" for t in v)

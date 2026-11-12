@@ -23,6 +23,9 @@ def script(*steps):
 
     async def fake(cfg, messages, tools):
         step = next(it)
+        fake.models.append(cfg.model)
+        if isinstance(step, Exception):
+            raise step
         if isinstance(step, str):
             for w in step.split(" "):
                 yield Delta("text", text=w + " ")
@@ -36,6 +39,7 @@ def script(*steps):
                     yield Delta("tool_args", index=i, text=s[k:k + 37], call=c)
         yield Delta("done", finish_reason="stop")
 
+    fake.models = []
     return fake
 
 
@@ -57,7 +61,7 @@ def env(tmp_path, monkeypatch):
     bus = Bus(store)
     st = Studio(store, bus, verified_executor(tmp_path, store))
     ws = store.create_workspace("test")
-    asyncio.run(dsets.load_pilot(store, ws["id"]))
+    asyncio.run(dsets.load_pilot(store, ws["id"], ex=st.ex))
     return store, st, Agent(st), ws["id"]
 
 
@@ -178,7 +182,7 @@ def test_runs_with_workspace_under_home(tmp_path):
         try:
             st = Studio(store, Bus(store), verified_executor(base, store))
             wid = store.create_workspace("home")["id"]
-            asyncio.run(dsets.load_pilot(store, wid))
+            asyncio.run(dsets.load_pilot(store, wid, ex=st.ex))
             st.propose_spec(wid, SPEC, "", by="user")
             st.save_program(wid, TEAE_R, "user")
             r = asyncio.run(st.run(wid, by="user"))
