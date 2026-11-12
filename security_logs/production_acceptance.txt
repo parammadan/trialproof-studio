@@ -1,0 +1,26 @@
+PASS execution enabled only after a passing self-test  (passed)
+PASS isolation backend  (Linux namespaces (bubblewrap), no network)
+PASS worked example runs and verifies (417 passed, 0 mismatches)  (succeeded, 417 passed, 0 mismatch)
+PASS probe program ran  (succeeded)
+PASS R can read its own dataset
+PASS R can write its output (probe table emitted)
+PASS R cannot: read database  (FALSE)
+PASS R cannot: write database dir  (FALSE)
+PASS R cannot: read app source  (FALSE)
+PASS R cannot: list app dir  (FALSE)
+PASS R cannot: write app source dir  (FALSE)
+PASS R cannot: read other workspace  (FALSE)
+PASS R cannot: list workspaces  (FALSE)
+PASS R cannot: env has secret  (FALSE)
+PASS R cannot: proc has secret  (FALSE)
+PASS R cannot: network tcp  (FALSE)
+PASS R cannot: network http  (FALSE)
+PASS R cannot: write own dataset  (FALSE)
+PASS R sees only its own processes  (2 pids visible)
+PASS another session gets 404 on every workspace endpoint  ({"GET ": 404, "GET /events": 404, "GET /export": 404, "GET /runs": 404, "GET /datasets/ADSL/rows": 404, "POST /programs": 404, "POST /run": 404, "POST /messages": 404, "POST /example": 404, "POST /signoff": 404})
+PASS another session's list does not include the workspace
+PASS a forged session cookie gets 404
+PASS the workspace was not changed by the other session
+PASS spoofed client-IP headers do not bypass the workspace limit (10/hour)  ([200, 200, 200, 200, 200, 200, 200, 200, 429, 429, 429, 429])
+
+24/24 checks passed

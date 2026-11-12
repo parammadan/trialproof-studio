@@ -1,0 +1,155 @@
+{
+  "workspace": "659b9f87f7",
+  "steps": [
+    {
+      "say": "Using these datasets, create a treatment-emergent adverse event summary by treatment group.",
+      "seconds": 21.6,
+      "program": null,
+      "specs": [
+        [
+          1,
+          "proposed"
+        ]
+      ],
+      "run": null,
+      "validation": []
+    },
+    {
+      "say": "I approved specification v1. Go ahead.",
+      "seconds": 51.8,
+      "program": 1,
+      "specs": [
+        [
+          1,
+          "approved"
+        ]
+      ],
+      "run": null,
+      "validation": []
+    },
+    {
+      "say": "Continue: write the program, run it and check the validation.",
+      "seconds": 67.9,
+      "program": 1,
+      "specs": [
+        [
+          1,
+          "approved"
+        ]
+      ],
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          417,
+          0
+        ]
+      ]
+    },
+    {
+      "say": "Where did this number come from? Show the R code responsible.",
+      "seconds": 31.6,
+      "program": 1,
+      "specs": [
+        [
+          1,
+          "approved"
+        ]
+      ],
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          417,
+          0
+        ]
+      ]
+    },
+    {
+      "say": "Use the efficacy population (EFFFL) instead of the safety population.",
+      "seconds": 84.7,
+      "program": 1,
+      "specs": [
+        [
+          1,
+          "approved"
+        ],
+        [
+          2,
+          "proposed"
+        ]
+      ],
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          417,
+          0
+        ]
+      ]
+    },
+    {
+      "say": "I approved specification v2. Go ahead.",
+      "seconds": 166.7,
+      "program": 2,
+      "specs": [
+        [
+          1,
+          "approved"
+        ],
+        [
+          2,
+          "approved"
+        ]
+      ],
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          405,
+          0
+        ]
+      ]
+    },
+    {
+      "user_error": true,
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          405,
+          0
+        ]
+      ]
+    },
+    {
+      "say": "Validation found mismatches. Investigate the cause and propose a corrected program, then rerun it. Do not change the specification.",
+      "seconds": 7.2,
+      "program": 3,
+      "specs": [
+        [
+          1,
+          "approved"
+        ],
+        [
+          2,
+          "approved"
+        ]
+      ],
+      "run": "succeeded",
+      "validation": [
+        [
+          "teae_summary_by_treatment",
+          "passed",
+          405,
+          0
+        ]
+      ]
+    }
+  ]
+}

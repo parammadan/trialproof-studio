@@ -1,0 +1,41 @@
+Connecting to fdaa:f5:e9d1:a7b:245:b7d6:5448:2...
+tests/test_flow.py::test_partial_string_decodes_streamed_json PASSED     [ 30%]
+tests/test_flow.py::test_runs_with_workspace_under_home PASSED           [ 34%]
+tests/test_flow.py::test_text_tool_calls_are_parsed PASSED               [ 39%]
+tests/test_flow.py::test_stop_while_failing_is_nudged_and_spec_footprint_reported PASSED [ 43%]
+tests/test_flow.py::test_long_single_turn_fits_context FAILED            [ 47%]
+tests/test_flow.py::test_write_guards_and_diff_since_passing PASSED      [ 52%]
+tests/test_flow.py::test_edit_program_exact_replace PASSED               [ 56%]
+tests/test_security.py::test_sandbox_isolates_user_programs PASSED       [ 60%]
+tests/test_security.py::test_runs_refused_until_isolation_verified PASSED [ 65%]
+tests/test_security.py::test_self_test_fails_closed_without_a_sandbox PASSED [ 69%]
+tests/test_security.py::test_self_test_fails_closed_when_sandbox_missing PASSED [ 73%]
+tests/test_security.py::test_output_limit_stops_runaway_printing PASSED  [ 78%]
+tests/test_security.py::test_budgets_stop_one_session_and_the_whole_demo PASSED [ 82%]
+tests/test_security.py::test_sessions_cannot_reach_each_others_workspaces PASSED [ 86%]
+tests/test_security.py::test_spoofed_ip_headers_do_not_bypass_rate_limits PASSED [ 91%]
+tests/test_security.py::test_public_session_turn_budget PASSED           [ 95%]
+tests/test_security.py::test_public_mode_still_runs_and_verifies PASSED  [100%]
+
+=================================== FAILURES ===================================
+______________________ test_long_single_turn_fits_context ______________________
+
+env = (<tp.store.Store object at 0x7fb43a58e870>, <tp.studio.Studio object at 0x7fb43a58e7e0>, <tp.agent.Agent object at 0x7fb43a58ee40>, '8255d2e181')
+
+    def test_long_single_turn_fits_context(env):
+        store, st, ag, wid = env
+        store.add_chat(wid, {"role": "user", "content": "fix it"})
+        for i in range(40):
+            store.add_chat(wid, {"role": "assistant", "content": "", "tool_calls": [
+                {"id": f"c{i}", "type": "function", "function": {"name": "write_program", "arguments": json.dumps({"code": TEAE_R * 3})}}]})
+            store.add_chat(wid, {"role": "tool", "tool_call_id": f"c{i}", "content": "x" * 5000})
+        ms = ag._messages(wid)
+>       assert sum(len(json.dumps(m)) for m in ms[1:]) <= agent_mod.CONTEXT_CHARS
+E       assert 29249 <= 12000
+E        +  where 29249 = sum(<generator object test_long_single_turn_fits_context.<locals>.<genexpr> at 0x7fb43ab7f3e0>)
+E        +  and   12000 = agent_mod.CONTEXT_CHARS
+
+tests/test_flow.py:232: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_flow.py::test_long_single_turn_fits_context - assert 29249 ...
+=================== 1 failed, 22 passed in 166.22s (0:02:46) ===================

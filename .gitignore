@@ -11,3 +11,5 @@ hpc/.tunnel.pid
 hpc/.job
 demo_run*.json
 ui_check/
+security_logs/local_ai_var/
+audit_evidence/var*/
