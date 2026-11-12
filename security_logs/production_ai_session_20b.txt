@@ -1,0 +1,23 @@
+model openai/gpt-oss-20b at https://api.groq.com/openai/v1
+workspace e7070f0e99
+
+>>> Using these datasets, create a treatment-emergent adverse event summary by treatment group.
+    {"seconds": 38.2, "program": null, "specs": [[1, "proposed"]], "run": null, "validation": []}
+   [user] approving spec v1: {"datasets": {"events": "ADAE", "subject": "ADSL"}, "event_filter": [{"op": "eq", "value": "Y", "var": "TRTEMFL"}], "include_total": false, "population": [{"op": "eq", "value": "Y", "var": "SAFFL"}], 
+
+>>> I approved specification v1. Go ahead.
+    {"seconds": 197.6, "program": 3, "specs": [[1, "approved"]], "run": "failed", "validation": []}
+
+>>> Continue: write the program, run it and check the validation.
+Traceback (most recent call last):
+  File "/Users/parammadan/trialproof-studio/scripts/demo_e2e.py", line 88, in <module>
+    s = until_run(w, "Using these datasets, create a treatment-emergent adverse event summary by treatment group.")
+  File "/Users/parammadan/trialproof-studio/scripts/demo_e2e.py", line 73, in until_run
+    s = say(w, "Continue: write the program, run it and check the validation.")
+  File "/Users/parammadan/trialproof-studio/scripts/demo_e2e.py", line 34, in say
+    r.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parammadan/trialproof-studio/server/.venv/lib/python3.14/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '429 Too Many Requests' for url 'https://trialproof-studio.fly.dev/api/workspaces/e7070f0e99/messages'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429

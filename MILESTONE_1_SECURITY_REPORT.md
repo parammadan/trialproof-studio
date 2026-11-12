@@ -19,7 +19,7 @@ on by the new fail-closed gate only, after the sandbox passed its own isolation 
 | Execution rejected if isolation fails | ✅ `test_runs_refused_until_isolation_verified`, `…fails_closed_without_a_sandbox` (plain `Rscript` detected), `…when_sandbox_missing` | ✅ the same tests ran on the Fly machine; the production gate opened only after `sandbox self-test (bwrap): passed` (Fly log, 16:13:02Z) |
 | Other sessions cannot read or modify a workspace | ✅ `test_sessions_cannot_reach_each_others_workspaces` (12 endpoints + forged cookie) | ✅ acceptance: 10 endpoints → 404, list excludes it, forged cookie → 404, workspace unchanged |
 | Client IP headers cannot bypass rate limits | ✅ `test_spoofed_ip_headers_do_not_bypass_rate_limits` (direct and trusted-header modes) | ✅ acceptance: 12 new clients with spoofed `X-Forwarded-For`, `X-Real-IP`, `Fly-Client-IP`, `True-Client-IP`, `Forwarded` → `200×8, 429×4` (8 because 2 of the hour's 10 were used earlier in the same run) |
-| One session cannot exhaust model resources | ✅ `test_budgets_stop_one_session_and_the_whole_demo`, `test_public_session_turn_budget` (real servers, 2-turn session and 3-turn global budgets) | ◐ budgets configured and reported by `/api/health`; the two budget tests passed **on the Fly machine** (test servers on the production VM), not through the public URL, because that would spend the demo's shared quota |
+| One session cannot exhaust model resources | ✅ `test_budgets_stop_one_session_and_the_whole_demo`, `test_public_session_turn_budget` (real servers, 2-turn session and 3-turn global budgets) | ✅ through the public URL (addendum): a real session was stopped mid-turn at 41,152 of its 40,000-token budget with the quota message, and its next message was refused with 429. The two budget tests also passed on the Fly machine |
 | Normal AI generation, R execution and verification still work | ✅ full scripted session on the hardened code (`gpt-oss-20b`): spec → 417/417 → efficacy-population spec v2 → 405/405 (`local_ai_session.txt`) | ◐ R execution and verification ✅ (417/417). AI: real tool calls ran (`list_datasets`, `inspect_dataset`), then Groq's **daily** cap for the key was exhausted (199,606 / 200,000 tokens, used earlier today by the audit and demo runs); the agent stopped with the new plain quota message. A full production AI session is **not yet verified** and should be rerun once the provider quota resets |
 
 Test totals:
@@ -158,5 +158,25 @@ mode; ingest still runs outside the sandbox.
   - sandboxed ingest
   - CI, pinned dependencies, the Docker executor
   - the DOMPurify advisory
+
+## Addendum: production AI run (same day, 16:22–16:28 UTC)
+
+Groq's `gpt-oss-120b` daily cap was still exhausted (198,649 / 200,000), so the production model was switched for one
+session to the same key's `openai/gpt-oss-20b` with `fly deploy --env TP_LLM_MODEL=openai/gpt-oss-20b`, then switched
+back. `/api/health` reports `openai/gpt-oss-120b` with the self-test passed. Log: `security_logs/production_ai_session_20b.txt`,
+plus the workspace's events read from the production database.
+
+- **AI generation in production:** ✅ The agent inspected the data and proposed the correct spec (SAFFL, TRT01A, TRTEMFL,
+  AEBODSYS/AEDECOD). After approval it wrote programs v1–v3, and each ran in the production sandbox. The runs failed
+  with real R errors carrying line numbers ("Column `N` doesn't exist", line 19; "Can't use arithmetic operator `*` in
+  selection context", lines 19 and 24), which the agent used to revise. Infrastructure works end to end; the small
+  model's programs were wrong.
+- **Session budget in production:** ✅ The turn was stopped at 41,152 tokens (budget 40,000) with "You have used this
+  session's AI budget for today (41,152 of 40,000 tokens). The worked example and your own R runs still work."; the
+  next message got HTTP 429. Usage rows confirm the same totals for the session, the client address and the global
+  counter.
+- **Not yet shown in production:** a model-built table passing verification. This was shown locally with `gpt-oss-20b`
+  and on the pre-milestone production build with `gpt-oss-120b`. Rerun `scripts/demo_e2e.py` against production once
+  the 120b quota resets.
 
 Milestone 1 stops here, as instructed.
