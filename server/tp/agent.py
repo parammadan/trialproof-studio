@@ -147,6 +147,33 @@ MAX_NUDGES = 2
 SPEC_BLOCK = re.compile(r'```(?:json)?\s*\{[^`]*"type"\s*:\s*"teae_summary"[^`]*"treatment_var"', re.S)
 
 
+class QuotaError(RuntimeError):
+    pass
+
+
+def _budget(name: str, public_default: int) -> int:
+    v = os.environ.get(name)
+    return int(v) if v else (public_default if os.environ.get("TP_PUBLIC") == "1" else 0)  # 0 = unlimited
+
+
+# Per UTC day. A turn counts when it starts; tokens are the provider-reported prompt + completion tokens.
+BUDGETS = {
+    "session": {"turns": _budget("TP_BUDGET_SESSION_TURNS", 15), "tokens": _budget("TP_BUDGET_SESSION_TOKENS", 40000)},
+    "ip": {"turns": _budget("TP_BUDGET_IP_TURNS", 30), "tokens": _budget("TP_BUDGET_IP_TOKENS", 80000)},
+    "global": {"turns": _budget("TP_BUDGET_GLOBAL_TURNS", 0), "tokens": _budget("TP_BUDGET_GLOBAL_TOKENS", 150000)},
+}
+QUOTA_MSG = {
+    "session": "You have used this session's AI budget for today ({used}). The worked example and your own R runs still work.",
+    "ip": "The AI budget for your network address is used up for today ({used}). The worked example and R runs still work.",
+    "global": "The demo's shared AI budget is used up for today ({used}). The worked example and R runs still work; please try the agent again tomorrow.",
+}
+PROVIDER_QUOTA = re.compile(r"tokens per day|\(TPD\)|requests per day|\(RPD\)|insufficient_quota|quota", re.I)
+
+
+def _day() -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+
 class Agent:
     def __init__(self, studio: Studio):
         self.studio = studio
@@ -161,10 +188,40 @@ class Agent:
         t = self.tasks.get(wid)
         return bool(t and not t.done())
 
-    def start(self, wid: str, text: str, context: dict | None = None) -> None:
+    @staticmethod
+    def budgets() -> dict:
+        return BUDGETS
+
+    def _keys(self, who: dict | None) -> list[tuple[str, str]]:
+        who = who or {}
+        return [(k, f"{k}:{who[k]}" if k != "global" else "global") for k in ("session", "ip", "global")
+                if k == "global" or who.get(k)]
+
+    def over_budget(self, who: dict | None, check_turns: bool = True) -> str | None:
+        """The quota message for the first exhausted budget, or None."""
+        day = _day()
+        for kind, key in self._keys(who):
+            u, b = self.store.usage(key, day), BUDGETS[kind]
+            if check_turns and b["turns"] and u["turns"] >= b["turns"]:
+                return QUOTA_MSG[kind].format(used=f"{u['turns']} of {b['turns']} requests")
+            if b["tokens"] and u["tokens"] >= b["tokens"]:
+                return QUOTA_MSG[kind].format(used=f"{u['tokens']:,} of {b['tokens']:,} tokens")
+        return None
+
+    def _charge(self, who: dict | None, turns: int = 0, tokens: int = 0):
+        day = _day()
+        for _, key in self._keys(who):
+            self.store.add_usage(key, day, turns, tokens)
+
+    def start(self, wid: str, text: str, context: dict | None = None, who: dict | None = None) -> None:
         if self.busy(wid):
             raise RuntimeError("the agent is already working in this workspace; cancel it or wait")
-        self.tasks[wid] = asyncio.create_task(self._turn(wid, text, context))
+        msg = self.over_budget(who)
+        if msg:
+            self.bus.emit(wid, "agent_error", code="quota", message=msg)
+            raise QuotaError(msg)
+        self._charge(who, turns=1)
+        self.tasks[wid] = asyncio.create_task(self._turn(wid, text, context, who))
 
     async def cancel(self, wid: str) -> bool:
         t = self.tasks.get(wid)
@@ -222,7 +279,7 @@ class Agent:
                  "Earlier tool results in this conversation may be out of date.")
         return [{"role": "system", "content": SYSTEM + "\n" + state}] + out
 
-    async def _turn(self, wid: str, text: str, context: dict | None):
+    async def _turn(self, wid: str, text: str, context: dict | None, who: dict | None = None):
         cfg = self.config()
         acked = self.store.get_setting("acked_hosts", [])
         user_msg = text if not context else f"{text}\n\n[Context from the UI: {json.dumps(context)}]"
@@ -267,6 +324,7 @@ class Agent:
                         finish = d.finish_reason
                         for k in usage_total:
                             usage_total[k] += (d.usage or {}).get(k, 0) or 0
+                        self._charge(who, tokens=sum((d.usage or {}).get(k, 0) or 0 for k in usage_total))
                 content = "".join(text_buf)
                 if not calls:
                     # Some open models write their calls as text (Hermes <tool_call> tags, or bare JSON objects)
@@ -340,6 +398,10 @@ class Agent:
                     paused = paused or (name in PAUSE and result.get("ok", True))
                 if paused:
                     break
+                quota = self.over_budget(who, check_turns=False)
+                if quota:
+                    self.bus.emit(wid, "agent_error", code="quota", message=quota)
+                    break
             else:
                 self.bus.emit(wid, "agent_error", code="steps", message=f"Stopped after {MAX_STEPS} steps; ask me to continue.")
         except asyncio.CancelledError:
@@ -350,7 +412,12 @@ class Agent:
         except LLMError as e:
             for tc in pending_calls:
                 self.store.add_chat(wid, {"role": "tool", "tool_call_id": tc["id"], "content": '{"ok": false, "error": "model failure"}'})
-            self.bus.emit(wid, "agent_error", code="model", message=str(e))
+            if "HTTP 429" in str(e) and PROVIDER_QUOTA.search(str(e)):
+                self.bus.emit(wid, "agent_error", code="quota", message=(
+                    "The model provider's free quota for this demo is used up for now, so the agent cannot answer. "
+                    "The worked example and your own R runs still work; please try the agent again later."), detail=str(e)[:400])
+            else:
+                self.bus.emit(wid, "agent_error", code="model", message=str(e))
         except Exception as e:
             traceback.print_exc()
             self.bus.emit(wid, "agent_error", code="internal", message=f"{type(e).__name__}: {e}")
