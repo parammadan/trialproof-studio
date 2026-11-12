@@ -1,0 +1,62 @@
+{
+ "api": "http://127.0.0.1:8765",
+ "data": "synthetic",
+ "started": "2026-11-12T20:49:53Z",
+ "turns": [
+  {
+   "say": "Using these datasets, create a treatment-emergent adverse event summary by treatment group.",
+   "seconds": 28.8,
+   "outcome": "incomplete",
+   "model": "openai/gpt-oss-20b",
+   "tokens": {
+    "prompt_tokens": 2340,
+    "completion_tokens": 35
+   },
+   "tools": [
+    "list_datasets"
+   ],
+   "nudges": [
+    "the model returned an empty reply; asked it to continue",
+    "the model returned an empty reply; asked it to continue"
+   ],
+   "errors": [
+    "empty: The model returned empty replies, so the agent stopped."
+   ],
+   "replies": [],
+   "program": null,
+   "specs": [],
+   "verification": {
+    "state": "not_verified",
+    "reasons": [
+     "nothing has been run"
+    ],
+    "run_id": null,
+    "validation_id": null
+   }
+  }
+ ],
+ "checks": [
+  {
+   "check": "datasets uploaded and parsed in the sandbox",
+   "pass": true,
+   "detail": "DM 8x5, AEV 12x5"
+  },
+  {
+   "check": "the agent inspected the data before specifying",
+   "pass": true,
+   "detail": "list_datasets"
+  },
+  {
+   "check": "the proposed specification matches the expected analysis (approved by the reviewer)",
+   "pass": false,
+   "detail": "[]"
+  }
+ ],
+ "model": "openai/gpt-oss-20b",
+ "execution": "passed",
+ "workspace": "5b991af156",
+ "upload_errors": [],
+ "passed": 2,
+ "failed": 1,
+ "tokens": 2375
+}
