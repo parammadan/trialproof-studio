@@ -1,10 +1,12 @@
-;; macOS sandbox profile for user/agent R programs: no network, no reads of the home folder outside
-;; the workspace (path metadata lookups are allowed, file contents are not), writes only inside the run directory.
+;; macOS sandbox profile for user/agent R programs: no network; no reads of the home folder, the application
+;; folder or the data folder (other workspaces, the database), apart from this run's directory, this workspace's
+;; datasets and the R helpers (path metadata lookups are allowed, file contents are not); writes only inside the
+;; run directory. Later rules take precedence over earlier ones.
 (version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
 (allow file-write* (subpath (param "RUN_DIR")) (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))
-(deny file-read* (subpath (param "HOME_DIR")))
+(deny file-read* (subpath (param "HOME_DIR")) (subpath (param "APP_DIR")) (subpath (param "VAR_DIR")))
 (allow file-read-metadata)
 (allow file-read* (subpath (param "RUN_DIR")) (subpath (param "DATA_DIR")) (subpath (param "R_DIR")))
