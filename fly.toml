@@ -12,6 +12,14 @@ primary_region = "iad"
   # Groq free tier: 8k tokens per request and per minute
   TP_CONTEXT_CHARS = "12000"
   TP_LLM_MAX_TOKENS = "2048"
+  # Fly's proxy sets (and overwrites) fly-client-ip; X-Forwarded-For is never trusted
+  TP_CLIENT_IP_HEADER = "fly-client-ip"
+  # model budgets per UTC day (Groq's free tier allows 200k tokens/day for the whole key)
+  TP_BUDGET_SESSION_TURNS = "15"
+  TP_BUDGET_SESSION_TOKENS = "40000"
+  TP_BUDGET_IP_TURNS = "30"
+  TP_BUDGET_IP_TOKENS = "80000"
+  TP_BUDGET_GLOBAL_TOKENS = "150000"
 
 [http_service]
   internal_port = 7860
@@ -29,4 +37,4 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "1gb"
+  memory = "2gb"  # one R run (1 GB address-space limit) plus the server

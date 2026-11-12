@@ -8,7 +8,7 @@ COPY web/ ./
 RUN npx vite build
 
 FROM rocker/r-ver:4.5.1
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv util-linux \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 RUN install2.r --error --skipinstalled dplyr tidyr haven readr jsonlite tibble
 RUN useradd -m -u 1000 user
@@ -23,6 +23,9 @@ RUN cd server && .venv/bin/python -c "import asyncio, httpx; from tp.datasets im
 PILOT_DIR.mkdir(parents=True, exist_ok=True); \
 [(PILOT_DIR / f).write_bytes(httpx.get(PILOT_URL.format(f), follow_redirects=True, timeout=120).content) for f in PILOT_SHA]; \
 assert all(sha256(PILOT_DIR / f) == h for f, h in PILOT_SHA.items()), 'pilot checksum mismatch'"
-ENV TP_PUBLIC=1 TP_EXECUTOR=rlimit TP_RUN_TIMEOUT=60 TP_RUN_MEMORY_MB=1536
+# R runs in bubblewrap (the Linux default); the server refuses to run R until its sandbox self-test passes
+ENV TP_PUBLIC=1 TP_EXECUTOR=bwrap TP_RUN_TIMEOUT=60 TP_RUN_MEMORY_MB=1024 TP_MAX_CONCURRENT_RUNS=1
 EXPOSE 7860
-CMD ["sh", "-c", "cd server && exec .venv/bin/uvicorn tp.main:app --host 0.0.0.0 --port 7860 --proxy-headers --forwarded-allow-ips='*'"]
+# --no-proxy-headers: never take the client address from X-Forwarded-For (client-controlled); the trusted
+# address comes from TP_CLIENT_IP_HEADER (set by the hosting proxy) or the TCP peer
+CMD ["sh", "-c", "cd server && exec .venv/bin/uvicorn tp.main:app --host 0.0.0.0 --port 7860 --no-proxy-headers"]
