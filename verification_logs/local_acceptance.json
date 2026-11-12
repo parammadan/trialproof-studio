@@ -1,0 +1,540 @@
+{
+ "api": "http://127.0.0.1:8776",
+ "started": "2026-11-12T16:59:58Z",
+ "runs": {
+  "correct": {
+   "run_id": "20261112-115959-2624e9",
+   "status": "succeeded",
+   "validation": "passed",
+   "passed": 417,
+   "mismatch": 0,
+   "codes": [],
+   "verification": {
+    "run_id": "20261112-115959-2624e9",
+    "validation_id": "044b16d834",
+    "program_version": 1,
+    "spec_version": 1,
+    "state": "verified",
+    "reasons": []
+   }
+  },
+  "percentages \u00d70.1": {
+   "run_id": "20261112-120000-da7b85",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "codes": [
+    "pct"
+   ],
+   "verification": {
+    "run_id": "20261112-120000-da7b85",
+    "validation_id": "8dd34c08ea",
+    "program_version": 2,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "417 cells do not match the independent reference"
+    ]
+   }
+  },
+  "percentage column missing": {
+   "run_id": "20261112-120001-63b2bd",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "codes": [
+    "pct_missing"
+   ],
+   "verification": {
+    "run_id": "20261112-120001-63b2bd",
+    "validation_id": "5449e03f7c",
+    "program_version": 3,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "417 cells do not match the independent reference"
+    ]
+   }
+  },
+  "invented zero-count PT row": {
+   "run_id": "20261112-120002-3850f9",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 417,
+   "mismatch": 1,
+   "codes": [
+    "extra_category"
+   ],
+   "verification": {
+    "run_id": "20261112-120002-3850f9",
+    "validation_id": "e0800d4c46",
+    "program_version": 4,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "1 cell do not match the independent reference"
+    ]
+   }
+  },
+  "duplicate row": {
+   "run_id": "20261112-120004-3ca665",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 417,
+   "mismatch": 1,
+   "codes": [
+    "duplicate"
+   ],
+   "verification": {
+    "run_id": "20261112-120004-3ca665",
+    "validation_id": "beb80d303f",
+    "program_version": 5,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "1 cell do not match the independent reference"
+    ]
+   }
+  },
+  "5 PT rows missing": {
+   "run_id": "20261112-120006-80e952",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 412,
+   "mismatch": 5,
+   "codes": [
+    "missing"
+   ],
+   "verification": {
+    "run_id": "20261112-120006-80e952",
+    "validation_id": "c9bd573438",
+    "program_version": 6,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "5 cells do not match the independent reference"
+    ]
+   }
+  },
+  "records counted instead of subjects (PT)": {
+   "run_id": "20261112-120010-6f00fe",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 259,
+   "mismatch": 158,
+   "codes": [
+    "n"
+   ],
+   "verification": {
+    "run_id": "20261112-120010-6f00fe",
+    "validation_id": "204afc5957",
+    "program_version": 7,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "158 cells do not match the independent reference"
+    ]
+   }
+  },
+  "denominator from AE subjects": {
+   "run_id": "20261112-120014-709a71",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "codes": [
+    "N"
+   ],
+   "verification": {
+    "run_id": "20261112-120014-709a71",
+    "validation_id": "5aea5c33aa",
+    "program_version": 8,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "417 cells do not match the independent reference"
+    ]
+   }
+  },
+  "efficacy population instead of safety": {
+   "run_id": "20261112-120015-f5aa75",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "codes": [
+    "N",
+    "missing",
+    "n"
+   ],
+   "verification": {
+    "run_id": "20261112-120015-f5aa75",
+    "validation_id": "596ac7c3e4",
+    "program_version": 9,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "417 cells do not match the independent reference"
+    ]
+   }
+  },
+  "treatment-emergent filter dropped": {
+   "run_id": "20261112-120016-2ab3b1",
+   "status": "succeeded",
+   "validation": "mismatch",
+   "passed": 381,
+   "mismatch": 56,
+   "codes": [
+    "extra_category",
+    "n"
+   ],
+   "verification": {
+    "run_id": "20261112-120016-2ab3b1",
+    "validation_id": "a14651332d",
+    "program_version": 10,
+    "spec_version": 1,
+    "state": "failed",
+    "reasons": [
+     "56 cells do not match the independent reference"
+    ]
+   }
+  },
+  "failed run": {
+   "run_id": "20261112-120018-16b809",
+   "status": "failed",
+   "validation": null,
+   "passed": null,
+   "mismatch": null,
+   "codes": [],
+   "verification": {
+    "run_id": "20261112-120018-16b809",
+    "validation_id": null,
+    "program_version": 11,
+    "spec_version": null,
+    "state": "not_verified",
+    "reasons": [
+     "the run failed"
+    ]
+   }
+  },
+  "unverified table type": {
+   "run_id": "20261112-120019-59c304",
+   "status": "succeeded",
+   "validation": null,
+   "passed": null,
+   "mismatch": null,
+   "codes": [],
+   "verification": {
+    "run_id": "20261112-120019-59c304",
+    "validation_id": null,
+    "program_version": 12,
+    "spec_version": null,
+    "state": "not_verified",
+    "reasons": [
+     "the run has no table of a verifiable type (teae_summary) or no approved specification"
+    ]
+   }
+  },
+  "correct again": {
+   "run_id": "20261112-120020-b66ef7",
+   "status": "succeeded",
+   "validation": "passed",
+   "passed": 417,
+   "mismatch": 0,
+   "codes": [],
+   "verification": {
+    "run_id": "20261112-120020-b66ef7",
+    "validation_id": "ef51e1caf0",
+    "program_version": 13,
+    "spec_version": 1,
+    "state": "verified",
+    "reasons": []
+   }
+  },
+  "correct, current": {
+   "run_id": "20261112-120021-652029",
+   "status": "succeeded",
+   "validation": "passed",
+   "passed": 417,
+   "mismatch": 0,
+   "codes": [],
+   "verification": {
+    "run_id": "20261112-120021-652029",
+    "validation_id": "23bcbffda1",
+    "program_version": 15,
+    "spec_version": 1,
+    "state": "verified",
+    "reasons": []
+   }
+  }
+ },
+ "export_manifest": {
+  "workspace": {
+   "id": "f41b30298d",
+   "name": "acceptance \u00b7 verification",
+   "created_at": 1794502798.407457
+  },
+  "run_id": "20261112-120020-b66ef7",
+  "run_status": "succeeded",
+  "program_version": 13,
+  "program_sha256": "5bc9c34609b054a378f07b4fd213e29d3a50355ca328e1b662e08afb1d983d5b",
+  "program_matches_recorded_hash": true,
+  "spec_version": 1,
+  "spec_sha256": "ff7c07a9011861aeff91516a45e36b935580a58899211e4f3a10646c1b34aa47",
+  "spec_source": "the version the validation used",
+  "validation_id": "ef51e1caf0",
+  "validation_status": [
+   {
+    "table_id": "teae",
+    "status": "passed",
+    "passed": 417,
+    "mismatch": 0
+   }
+  ],
+  "verification_state_at_export": {
+   "run_id": "20261112-120020-b66ef7",
+   "validation_id": "ef51e1caf0",
+   "program_version": 13,
+   "spec_version": 1,
+   "state": "stale",
+   "reasons": [
+    "the program changed after this run (run used v13, current is v15)",
+    "the approved specification changed (validated against v1, current is v2)"
+   ]
+  },
+  "datasets": [
+   {
+    "name": "ADSL",
+    "sha256_at_run": "c5139f873a93ef6add77bc4297beb6460a398bbdd036874382a9f39dfc92091d",
+    "filename": "adsl.xpt",
+    "sha256": "c5139f873a93ef6add77bc4297beb6460a398bbdd036874382a9f39dfc92091d",
+    "nrow": 254,
+    "ncol": 48,
+    "source": "cdisc-pilot (PhUSE, sha256 verified)",
+    "unchanged_since_run": true
+   },
+   {
+    "name": "ADAE",
+    "sha256_at_run": "b8678e70946473a753bb01d002917f478bf51b59bdd0dc19587b97128059b6a0",
+    "filename": "adae.xpt",
+    "sha256": "b8678e70946473a753bb01d002917f478bf51b59bdd0dc19587b97128059b6a0",
+    "nrow": 1191,
+    "ncol": 55,
+    "source": "cdisc-pilot (PhUSE, sha256 verified)",
+    "unchanged_since_run": true
+   }
+  ],
+  "reviews": [
+   {
+    "id": "ca0a771f26",
+    "ws_id": "f41b30298d",
+    "run_id": "20261112-120020-b66ef7",
+    "validation_id": "ef51e1caf0",
+    "reviewer": "Acceptance test",
+    "decision": "approved",
+    "note": "automated acceptance",
+    "created_at": 1794502821.650696,
+    "evidence": {
+     "verification_state": "verified",
+     "reasons": [],
+     "validation_id": "ef51e1caf0",
+     "spec_version": 1,
+     "spec_sha256": "ff7c07a9011861aeff91516a45e36b935580a58899211e4f3a10646c1b34aa47",
+     "program_version": 13,
+     "program_sha256": "5bc9c34609b054a378f07b4fd213e29d3a50355ca328e1b662e08afb1d983d5b",
+     "datasets": {
+      "ADSL": "c5139f873a93ef6add77bc4297beb6460a398bbdd036874382a9f39dfc92091d",
+      "ADAE": "b8678e70946473a753bb01d002917f478bf51b59bdd0dc19587b97128059b6a0"
+     },
+     "confirmed_review": true,
+     "session": "1b05b017317b"
+    }
+   }
+  ],
+  "isolation": "macOS sandbox, no network",
+  "r_version": "R version 4.6.1 (2026-06-24)",
+  "exported_at": 1794502823.114434
+ },
+ "workspace": "f41b30298d",
+ "results": [
+  {
+   "check": "execution enabled after a passing sandbox self-test",
+   "pass": true,
+   "detail": "passed"
+  },
+  {
+   "check": "new specs record the percentage and zero-cell rules",
+   "pass": true,
+   "detail": "{\"percent\": {\"required\": true, \"decimals\": 1}, \"zero_cells\": \"optional\"}"
+  },
+  {
+   "check": "the correct program passes (417/417) and is verified",
+   "pass": true,
+   "detail": "417/0, verified"
+  },
+  {
+   "check": "detected: percentages \u00d70.1",
+   "pass": true,
+   "detail": "417 mismatched, codes ['pct']"
+  },
+  {
+   "check": "cannot sign off: percentages \u00d70.1",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: percentage column missing",
+   "pass": true,
+   "detail": "417 mismatched, codes ['pct_missing']"
+  },
+  {
+   "check": "cannot sign off: percentage column missing",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: invented zero-count PT row",
+   "pass": true,
+   "detail": "1 mismatched, codes ['extra_category']"
+  },
+  {
+   "check": "cannot sign off: invented zero-count PT row",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: duplicate row",
+   "pass": true,
+   "detail": "1 mismatched, codes ['duplicate']"
+  },
+  {
+   "check": "cannot sign off: duplicate row",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: 5 PT rows missing",
+   "pass": true,
+   "detail": "5 mismatched, codes ['missing']"
+  },
+  {
+   "check": "cannot sign off: 5 PT rows missing",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: records counted instead of subjects (PT)",
+   "pass": true,
+   "detail": "158 mismatched, codes ['n']"
+  },
+  {
+   "check": "cannot sign off: records counted instead of subjects (PT)",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: denominator from AE subjects",
+   "pass": true,
+   "detail": "417 mismatched, codes ['N']"
+  },
+  {
+   "check": "cannot sign off: denominator from AE subjects",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: efficacy population instead of safety",
+   "pass": true,
+   "detail": "417 mismatched, codes ['N', 'missing', 'n']"
+  },
+  {
+   "check": "cannot sign off: efficacy population instead of safety",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "detected: treatment-emergent filter dropped",
+   "pass": true,
+   "detail": "56 mismatched, codes ['extra_category', 'n']"
+  },
+  {
+   "check": "cannot sign off: treatment-emergent filter dropped",
+   "pass": true,
+   "detail": "failed"
+  },
+  {
+   "check": "cannot sign off a failed run",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "changes can be requested on a failed run",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "cannot sign off an unverified run",
+   "pass": true,
+   "detail": "not_verified"
+  },
+  {
+   "check": "decision must be allowed",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "the reviewer must confirm their review",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "a current verified run can be signed off",
+   "pass": true,
+   "detail": "{\"approval_id\":\"ca0a771f26\",\"verification_state\":\"verified\"}"
+  },
+  {
+   "check": "program change after validation \u2192 stale",
+   "pass": true,
+   "detail": "the program changed after this run (run used v13, current is v14)"
+  },
+  {
+   "check": "cannot sign off a stale result",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "specification change after validation \u2192 stale",
+   "pass": true,
+   "detail": "the approved specification changed (validated against v1, current is v2)"
+  },
+  {
+   "check": "cannot sign off after the spec changed",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "export of an older run carries the spec its validation used",
+   "pass": true,
+   "detail": "bundle spec v1, current approved spec is v2"
+  },
+  {
+   "check": "export carries the executed code and its validation",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "export records the review and the verification state now",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "check": "export records dataset hashes at run time",
+   "pass": true,
+   "detail": "ADSL c5139f873a93, ADAE b8678e709464"
+  }
+ ],
+ "passed": 35,
+ "failed": 0
+}

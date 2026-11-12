@@ -1,0 +1,20 @@
+A_denominator_from_AE_subjects {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 0, "mismatch": 417, "not_verified": 0, "reason": null, "pattern": ["417 mismatched cells: 3 at le
+A2_denominator_whole_study_not_by_group {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 0, "mismatch": 417, "not_verified": 0, "reason": null, "pattern": ["417 mismatched cells
+B_events_not_subjects_PT {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 259, "mismatch": 158, "not_verified": 0, "reason": null, "pattern": ["158 mismatched cells: 158 at leve
+B2_events_not_subjects_all_levels {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 212, "mismatch": 205, "not_verified": 0, "reason": null, "pattern": ["205 mismatched cells: 3 
+C_wrong_population_EFFFL {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 0, "mismatch": 417, "not_verified": 0, "reason": null, "pattern": ["417 mismatched cells: 3 at level 'a
+C2_population_filter_removed {"run": "succeeded", "error": null, "validation": "passed", "passed": 417, "mismatch": 0, "not_verified": 0, "reason": null, "pattern": []}
+D_no_TE_filter {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 381, "mismatch": 56, "not_verified": 0, "reason": null, "pattern": ["56 mismatched cells: 2 at level 'any', 33 at
+E_PT_from_AELLT {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 192, "mismatch": 491, "not_verified": 0, "reason": null, "pattern": ["491 mismatched cells: 491 at level 'pt'", 
+E2_SOC_from_AEHLGT {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 3, "mismatch": 1122, "not_verified": 0, "reason": null, "pattern": ["1122 mismatched cells: 708 at level 'pt'
+F_omit_5_PT_rows {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 412, "mismatch": 5, "not_verified": 0, "reason": null, "pattern": ["5 mismatched cells: 5 at level 'pt'", "5 re
+F2_omit_any_level {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 414, "mismatch": 3, "not_verified": 0, "reason": null, "pattern": ["3 mismatched cells: 3 at level 'any'", "3 
+F3_omit_one_group {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 281, "mismatch": 136, "not_verified": 0, "reason": null, "pattern": ["136 mismatched cells: 1 at level 'any', 
+G_wrong_percentages {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 0, "mismatch": 417, "not_verified": 0, "reason": null, "pattern": ["417 mismatched cells: 3 at level 'any', 
+G2_pct_column_dropped {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 0, "mismatch": 417, "not_verified": 0, "reason": null, "pattern": ["417 mismatched cells: 3 at level 'any'
+X1_extra_fabricated_row {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 417, "mismatch": 1, "not_verified": 0, "reason": null, "pattern": ["1 mismatched cells: 1 at level 'pt'"
+X2_fabricated_row_nonzero {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 417, "mismatch": 1, "not_verified": 0, "reason": null, "pattern": ["1 mismatched cells: 1 at level 'pt
+X3_duplicate_row {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 417, "mismatch": 1, "not_verified": 0, "reason": null, "pattern": ["1 mismatched cells: 1 at level 'any'", "1 p
+X4_n_off_by_one_single_cell {"run": "succeeded", "error": null, "validation": "mismatch", "passed": 416, "mismatch": 1, "not_verified": 0, "reason": null, "pattern": ["1 mismatched cells: 1 at level '
+X5_not_teae_type {"run": "succeeded", "error": null, "validation": null, "passed": null, "mismatch": null, "not_verified": null, "reason": null, "pattern": []}
+X6_n_as_text {"run": "succeeded", "error": null, "validation": "passed", "passed": 417, "mismatch": 0, "not_verified": 0, "reason": null, "pattern": []}

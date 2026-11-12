@@ -1,0 +1,37 @@
+PASS execution enabled after a passing sandbox self-test  (passed)
+PASS new specs record the percentage and zero-cell rules  ({"percent": {"required": true, "decimals": 1}, "zero_cells": "optional"})
+PASS the correct program passes (417/417) and is verified  (417/0, verified)
+PASS detected: percentages ×0.1  (417 mismatched, codes ['pct'])
+PASS cannot sign off: percentages ×0.1  (failed)
+PASS detected: percentage column missing  (417 mismatched, codes ['pct_missing'])
+PASS cannot sign off: percentage column missing  (failed)
+PASS detected: invented zero-count PT row  (1 mismatched, codes ['extra_category'])
+PASS cannot sign off: invented zero-count PT row  (failed)
+PASS detected: duplicate row  (1 mismatched, codes ['duplicate'])
+PASS cannot sign off: duplicate row  (failed)
+PASS detected: 5 PT rows missing  (5 mismatched, codes ['missing'])
+PASS cannot sign off: 5 PT rows missing  (failed)
+PASS detected: records counted instead of subjects (PT)  (158 mismatched, codes ['n'])
+PASS cannot sign off: records counted instead of subjects (PT)  (failed)
+PASS detected: denominator from AE subjects  (417 mismatched, codes ['N'])
+PASS cannot sign off: denominator from AE subjects  (failed)
+PASS detected: efficacy population instead of safety  (417 mismatched, codes ['N', 'missing', 'n'])
+PASS cannot sign off: efficacy population instead of safety  (failed)
+PASS detected: treatment-emergent filter dropped  (56 mismatched, codes ['extra_category', 'n'])
+PASS cannot sign off: treatment-emergent filter dropped  (failed)
+PASS cannot sign off a failed run
+PASS changes can be requested on a failed run
+PASS cannot sign off an unverified run  (not_verified)
+PASS decision must be allowed
+PASS the reviewer must confirm their review
+PASS a current verified run can be signed off  ({"approval_id":"bacb56675e","verification_state":"verified"})
+PASS program change after validation → stale  (the program changed after this run (run used v13, current is v14))
+PASS cannot sign off a stale result
+PASS specification change after validation → stale  (the approved specification changed (validated against v1, current is v2))
+PASS cannot sign off after the spec changed
+PASS export of an older run carries the spec its validation used  (bundle spec v1, current approved spec is v2)
+PASS export carries the executed code and its validation
+PASS export records the review and the verification state now
+PASS export records dataset hashes at run time  (ADSL c5139f873a93, ADAE b8678e709464)
+
+35/35 checks passed

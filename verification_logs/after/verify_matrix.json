@@ -1,0 +1,280 @@
+{
+ "workspace": "3b05fbbe3f",
+ "reconciliation": {
+  "baseline_validation": [
+   [
+    "passed",
+    417,
+    0
+   ]
+  ],
+  "reference_cells": 417,
+  "independent_cells": 417,
+  "cells_differing": 0,
+  "examples": [],
+  "program_equals_independent": 417,
+  "example_program_pct_inconsistent_rows": 0
+ },
+ "cases": {
+  "A_denominator_from_AE_subjects": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "417 mismatched cells: 3 at level 'any', 354 at level 'pt', 60 at level 'soc'",
+    "numerator: program n > reference n in 0, program n < reference n in 0, of 417 comparable cells",
+    "denominator N differs in 417 cells"
+   ]
+  },
+  "A2_denominator_whole_study_not_by_group": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "417 mismatched cells: 3 at level 'any', 354 at level 'pt', 60 at level 'soc'",
+    "numerator: program n > reference n in 0, program n < reference n in 0, of 417 comparable cells",
+    "denominator N differs in 417 cells"
+   ]
+  },
+  "B_events_not_subjects_PT": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 259,
+   "mismatch": 158,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "158 mismatched cells: 158 at level 'pt'",
+    "numerator: program n > reference n in 158, program n < reference n in 0, of 158 comparable cells",
+    "denominators (N) agree in every mismatched cell"
+   ]
+  },
+  "B2_events_not_subjects_all_levels": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 212,
+   "mismatch": 205,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "205 mismatched cells: 3 at level 'any', 158 at level 'pt', 44 at level 'soc'",
+    "numerator: program n > reference n in 205, program n < reference n in 0, of 205 comparable cells",
+    "denominators (N) agree in every mismatched cell"
+   ]
+  },
+  "C_wrong_population_EFFFL": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "417 mismatched cells: 3 at level 'any', 354 at level 'pt', 60 at level 'soc'",
+    "numerator: program n > reference n in 0, program n < reference n in 36, of 405 comparable cells",
+    "denominator N differs in 405 cells"
+   ]
+  },
+  "C2_population_filter_removed": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "passed",
+   "passed": 417,
+   "mismatch": 0,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": []
+  },
+  "D_no_TE_filter": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 381,
+   "mismatch": 56,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "56 mismatched cells: 2 at level 'any', 33 at level 'pt', 21 at level 'soc'",
+    "numerator: program n > reference n in 44, program n < reference n in 0, of 44 comparable cells",
+    "denominators (N) agree in every mismatched cell"
+   ]
+  },
+  "E_PT_from_AELLT": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 192,
+   "mismatch": 491,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "491 mismatched cells: 491 at level 'pt'",
+    "numerator: program n > reference n in 0, program n < reference n in 34, of 34 comparable cells",
+    "denominators (N) agree in every mismatched cell"
+   ]
+  },
+  "E2_SOC_from_AEHLGT": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 3,
+   "mismatch": 1122,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "1122 mismatched cells: 708 at level 'pt', 414 at level 'soc'",
+    "414 reference cells are missing from the program output",
+    "708 program rows are categories the reference does not have (invented, or a PT under the wrong SOC)"
+   ]
+  },
+  "F_omit_5_PT_rows": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 412,
+   "mismatch": 5,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "5 mismatched cells: 5 at level 'pt'",
+    "5 reference cells are missing from the program output"
+   ]
+  },
+  "F2_omit_any_level": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 414,
+   "mismatch": 3,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "3 mismatched cells: 3 at level 'any'",
+    "3 reference cells are missing from the program output"
+   ]
+  },
+  "F3_omit_one_group": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 281,
+   "mismatch": 136,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "136 mismatched cells: 1 at level 'any', 116 at level 'pt', 19 at level 'soc'",
+    "136 reference cells are missing from the program output"
+   ]
+  },
+  "G_wrong_percentages": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "417 mismatched cells: 3 at level 'any', 354 at level 'pt', 60 at level 'soc'",
+    "417 cells have a percentage that differs from 100\u00b7n/N of the reference"
+   ]
+  },
+  "G2_pct_column_dropped": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 0,
+   "mismatch": 417,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "417 mismatched cells: 3 at level 'any', 354 at level 'pt', 60 at level 'soc'",
+    "417 cells are missing a percentage the specification requires"
+   ]
+  },
+  "X1_extra_fabricated_row": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 417,
+   "mismatch": 1,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "1 mismatched cells: 1 at level 'pt'",
+    "1 program rows are categories the reference does not have (invented, or a PT under the wrong SOC)"
+   ]
+  },
+  "X2_fabricated_row_nonzero": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 417,
+   "mismatch": 1,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "1 mismatched cells: 1 at level 'pt'",
+    "1 program rows are categories the reference does not have (invented, or a PT under the wrong SOC)"
+   ]
+  },
+  "X3_duplicate_row": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 417,
+   "mismatch": 1,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "1 mismatched cells: 1 at level 'any'",
+    "1 program rows are duplicates of an earlier row"
+   ]
+  },
+  "X4_n_off_by_one_single_cell": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "mismatch",
+   "passed": 416,
+   "mismatch": 1,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": [
+    "1 mismatched cells: 1 at level 'pt'",
+    "numerator: program n > reference n in 1, program n < reference n in 0, of 1 comparable cells",
+    "denominators (N) agree in every mismatched cell"
+   ]
+  },
+  "X5_not_teae_type": {
+   "run": "succeeded",
+   "error": null,
+   "validation": null,
+   "passed": null,
+   "mismatch": null,
+   "not_verified": null,
+   "reason": null,
+   "pattern": []
+  },
+  "X6_n_as_text": {
+   "run": "succeeded",
+   "error": null,
+   "validation": "passed",
+   "passed": 417,
+   "mismatch": 0,
+   "not_verified": 0,
+   "reason": null,
+   "pattern": []
+  }
+ }
+}
