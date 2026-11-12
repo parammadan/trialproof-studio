@@ -6,6 +6,14 @@ export const cn = (...v: ClassValue[]) => twMerge(clsx(v))
 export const pct = (n: number | null | undefined, N: number | null | undefined) =>
   n == null || !N ? null : (100 * n) / N
 
+/** The percentage the program emitted (never recomputed for display): a finite number, else null. */
+export const emitted = (r: Record<string, unknown> | undefined) => {
+  const v = r?.pct
+  if (v == null || v === '' || v === 'NA') return null
+  const x = Number(v)
+  return Number.isFinite(x) ? x : null
+}
+
 export const fmtPct = (p: number | null) => (p == null ? '' : p === 0 ? '0' : p < 0.05 ? '<0.1' : p.toFixed(1))
 
 export const ago = (ts: number) => {

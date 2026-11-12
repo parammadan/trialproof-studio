@@ -8,7 +8,7 @@ export type RunLive = {
   console: ConsoleLine[]
 }
 
-const REFRESH_ON = new Set(['program_version', 'spec_proposed', 'spec_decided', 'run_end', 'validation', 'dataset_added', 'signoff', 'agent_end', 'agent_start'])
+const REFRESH_ON = new Set(['run_start', 'program_version', 'spec_proposed', 'spec_decided', 'run_end', 'validation', 'dataset_added', 'signoff', 'agent_end', 'agent_start'])
 
 /** One workspace: the snapshot from the API plus the live event stream (SSE) that keeps it current. */
 export function useWorkspace(id: string) {

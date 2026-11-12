@@ -1,13 +1,13 @@
 import { motion } from 'motion/react'
 import {
-  ArrowDownWideNarrow, BarChart3, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Code2, FileWarning, Fingerprint,
-  MessageSquare, Search, ShieldCheck, Table2, Target,
+  ArrowDownWideNarrow, BarChart3, Bot, ChevronRight, CircleCheck, CircleDashed, CircleX, Clock, Code2, FileWarning, Fingerprint,
+  Loader2, MessageSquare, Search, ShieldCheck, Table2, Target,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { api, type Cell, type Table, type TableValidation } from '@/lib/api'
+import { api, type Cell, type Table, type TableValidation, type VerificationState } from '@/lib/api'
 import type { WorkspaceState } from '@/lib/useWorkspace'
-import { ago, cellKey, cn, fmtPct, pct } from '@/lib/utils'
+import { ago, cellKey, cn, emitted, fmtPct, pct } from '@/lib/utils'
 import type { CellRef, RightTab } from './Workspace'
 import { Badge, Button, Empty, Input, Popover, PopoverAnchor, PopoverContent, Tabs, TabsContent, TabsList, TabsTrigger, Tip } from './ui'
 
@@ -25,14 +25,14 @@ export default function ResultsPane({ wid, ws, tab, setTab, cell, setCell, onTra
 }) {
   const run = ws.snap?.run
   const val = ws.snap?.validation
-  const totals = (val?.tables ?? []).reduce((a, t) => ({ p: a.p + t.passed, m: a.m + t.mismatch, nv: a.nv + (t.status === 'not_verified' ? 1 : 0) }), { p: 0, m: 0, nv: 0 })
+  const totals = (val?.tables ?? []).reduce((a, t) => ({ m: a.m + t.mismatch }), { m: 0 })
   return (
     <Tabs value={tab} onValueChange={v => setTab(v as RightTab)} className="flex h-full flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-soft px-2">
         <TabsList>
           <TabsTrigger value="results"><Table2 /> Results</TabsTrigger>
           <TabsTrigger value="verify"><ShieldCheck /> Verification
-            {val && (totals.m > 0 ? <Badge tone="bad" className="h-4 px-1.5">{totals.m}</Badge> : totals.p > 0 ? <CircleCheck className="!size-3 text-ok" /> : null)}
+            <StateMark v={ws.snap?.verification} mismatches={totals.m} />
           </TabsTrigger>
           <TabsTrigger value="lineage"><Fingerprint /> Lineage</TabsTrigger>
         </TabsList>
@@ -63,6 +63,7 @@ function Results({ ws, cell, setCell, onTrace, send, onReveal }: {
     <div className="space-y-3 p-3">
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-fg-3">
         <Badge tone={run.status === 'succeeded' ? 'ok' : 'bad'}>{run.status}</Badge>
+        {ws.snap?.verification && <StateBadge v={ws.snap.verification} />}
         <span>program v{run.program_version}</span><span>·</span><span>{ago(run.ended)}</span><span>·</span>
         <Tip content={<div className="space-y-0.5 font-mono text-[10px]"><div>program {run.provenance.program_sha256}</div>{Object.entries(run.provenance.datasets).map(([k, v]) => <div key={k}>{k} {v}</div>)}<div>{run.provenance.r_version}</div></div>}>
           <span className="cursor-help underline decoration-dotted underline-offset-2">provenance</span>
@@ -70,6 +71,7 @@ function Results({ ws, cell, setCell, onTrace, send, onReveal }: {
         <span>·</span><span>{run.provenance.isolation ?? (run.provenance.backend === 'sandbox' ? 'macOS sandbox, no network' : run.provenance.backend)}</span>
       </div>
 
+      {ws.snap?.verification?.state === 'stale' && <StateBanner v={ws.snap.verification} />}
       {err && (
         <div className="rounded-xl border border-bad/30 bg-bad-soft/50 p-3">
           <div className="flex items-center gap-2 text-[12px] font-semibold text-bad"><FileWarning className="size-3.5" /> {err.kind === 'parse' ? 'Parse error' : err.kind === 'runtime' ? 'Runtime error' : `Run ${run.status}`}{err.line ? ` · line ${err.line}${err.end_line && err.end_line !== err.line ? `–${err.end_line}` : ''}` : ''}</div>
@@ -173,14 +175,14 @@ function Teae({ table, prev, tv, cell, setCell, onTrace, send }: {
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(groups.length, 4)}, minmax(0, 1fr))` }}>
         {groups.map((g, i) => {
           const r = anyRow[g]
-          const p = pct(Number(r?.n), Number(r?.N))
+          const p = emitted(r)
           return (
             <div key={g} className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
               <div className="flex items-center gap-1.5 truncate text-[10.5px] text-fg-3"><span className="size-2 shrink-0 rounded-sm" style={{ background: series(i) }} /><span className="truncate">{g}</span></div>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-[20px] font-semibold tabular tracking-tight">{fmtPct(p)}<span className="text-[12px] text-fg-3">%</span></span>
+                <span className="text-[20px] font-semibold tabular tracking-tight">{p == null ? '–' : fmtPct(p)}{p != null && <span className="text-[12px] text-fg-3">%</span>}</span>
               </div>
-              <div className="text-[10.5px] text-fg-3 tabular">{r ? `${r.n} of N=${r.N} with ≥1 TEAE` : 'no rows'}</div>
+              <div className="text-[10.5px] text-fg-3 tabular">{r ? `${r.n} of N=${r.N} with ≥1 TEAE${p == null ? ' · no % emitted' : ''}` : 'no rows'}</div>
             </div>
           )
         })}
@@ -260,7 +262,7 @@ function TRow({ n, groups, depth, status, changedOf, cell, setCell, onTrace, sen
         const st = status.get(cellKey(ref))
         const ch = changedOf(n, g)
         const sel = cell && cellKey(cell) === cellKey(ref) && cell.table_id === tableId
-        const p = pct(Number(r?.n ?? 0), Number(r?.N))
+        const p = emitted(r)
         return (
           <td key={g} className="border-b border-line-soft px-1 py-0.5 text-right">
             <CellPop open={!!sel} onOpenChange={o => setCell(o ? { ...ref, status: st?.status } : null)} cellRef={ref} r={r} st={st} was={ch?.was} onTrace={onTrace} send={send}>
@@ -270,7 +272,7 @@ function TRow({ n, groups, depth, status, changedOf, cell, setCell, onTrace, sen
                 className={cn('inline-flex w-full items-center justify-end gap-1 rounded-md px-1.5 py-1 font-mono text-[11px] tabular transition hover:bg-surface-3',
                   sel && 'bg-accent-soft ring-1 ring-accent/60', ch && 'ring-1 ring-violet/70', st?.status === 'mismatch' && 'bg-bad-soft text-bad', !r && 'text-fg-3/60')}>
                 <span>{r ? r.n : 0}</span>
-                <span className="w-[42px] text-left text-fg-3">{r ? `(${fmtPct(p)})` : ''}</span>
+                <span className="w-[42px] text-left text-fg-3">{r ? `(${p == null ? '–' : fmtPct(p)})` : ''}</span>
                 <StatusDot s={st?.status} />
               </button>
             </CellPop>
@@ -298,12 +300,12 @@ function CellPop({ children, open, onOpenChange, cellRef, r, st, was, onTrace, s
         <div className="text-[11px] text-fg-3">{cellRef.group}</div>
         <div className="mb-2 text-[12.5px] font-semibold leading-snug">{label}</div>
         <div className="mb-2 grid grid-cols-3 gap-1.5 text-center">
-          <Stat k="n" v={String(r?.n ?? 0)} /><Stat k="N" v={String(r?.N ?? '–')} /><Stat k="%" v={fmtPct(pct(Number(r?.n ?? 0), Number(r?.N)))} />
+          <Stat k="n" v={String(r?.n ?? 0)} /><Stat k="N" v={String(r?.N ?? '–')} /><Stat k="% (emitted)" v={emitted(r) == null ? '–' : fmtPct(emitted(r))} />
         </div>
         <div className={cn('mb-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-[11px]', st?.status === 'passed' ? 'bg-ok-soft text-ok' : st?.status === 'mismatch' ? 'bg-bad-soft text-bad' : 'bg-surface-3 text-fg-3')}>
           <StatusDot s={st?.status} />
-          <span>{st?.status === 'passed' ? `Matches the independent reference (n=${st.ref_n}, N=${st.ref_N})`
-            : st?.status === 'mismatch' ? `Mismatch: reference n=${st.ref_n ?? '–'}, N=${st.ref_N ?? '–'}${st.reason ? ` · ${st.reason}` : ''}`
+          <span>{st?.status === 'passed' ? `Matches the independent reference (n=${st.ref_n}, N=${st.ref_N}${st.ref_pct != null ? `, ${fmtPct(st.ref_pct)}%` : ''})`
+            : st?.status === 'mismatch' ? `Mismatch: reference n=${st.ref_n ?? '–'}, N=${st.ref_N ?? '–'}${st.ref_pct != null ? `, ${fmtPct(st.ref_pct)}%` : ''}${st.reason ? ` · ${st.reason}` : ''}`
               : 'Not verified for this cell'}</span>
         </div>
         {was !== undefined && <div className="mb-2 rounded-md bg-violet-soft px-2 py-1.5 text-[11px] text-violet">{was ? `Changed since the previous run: was ${was.n} / ${was.N}` : 'New since the previous run'}</div>}
@@ -324,7 +326,7 @@ const Stat = ({ k, v }: { k: string; v: string }) => (
 function Chart({ root, groups }: { root: Node; groups: string[] }) {
   const [hover, setHover] = useState<string | null>(null)
   const pts = root.children.flatMap(s => s.children)
-  const pc = (n: Node, g: string) => pct(Number(n.cells[g]?.n ?? 0), Number(n.cells[g]?.N ?? root.cells[g]?.N)) ?? 0
+  const pc = (n: Node, g: string) => emitted(n.cells[g]) ?? 0  // the program's own percentages
   const top = [...pts].sort((a, b) => Math.max(...groups.map(g => pc(b, g))) - Math.max(...groups.map(g => pc(a, g)))).slice(0, 12)
   const max = Math.max(1, ...top.flatMap(n => groups.map(g => pc(n, g))))
   return (
@@ -402,9 +404,11 @@ function Verification({ wid, ws, onTrace, send }: { wid: string; ws: WorkspaceSt
   const val = ws.snap?.validation
   const [filter, setFilter] = useState<'mismatch' | 'passed' | 'all'>('mismatch')
   if (!run) return <Empty icon={<ShieldCheck />} title="Nothing to verify yet" />
-  if (!val) return <Empty icon={<ShieldCheck />} title="Not verified">{run.status !== 'succeeded' ? 'The last run did not succeed.' : 'Verification needs a table of type teae_summary and an approved specification.'}</Empty>
+  const vs = ws.snap?.verification
+  if (!val) return <div className="space-y-3 p-3">{vs && <StateBanner v={vs} />}<Empty icon={<ShieldCheck />} title="Not verified">{run.status !== 'succeeded' ? 'The last run did not succeed.' : 'Verification needs a table of type teae_summary and an approved specification.'}</Empty></div>
   return (
     <div className="space-y-3 p-3">
+      {vs && <StateBanner v={vs} />}
       {val.tables.map(t => {
         const cells = t.cells.filter(c => filter === 'all' || c.status === filter)
         return (
@@ -435,7 +439,7 @@ function Verification({ wid, ws, onTrace, send }: { wid: string; ws: WorkspaceSt
                     <div key={i} className="flex items-center gap-2 border-b border-line-soft px-3 py-1.5 text-[11.5px] last:border-0">
                       <StatusDot s={c.status} />
                       <div className="min-w-0 flex-1"><div className="truncate text-fg-2" title={catLabel(c) ?? ''}>{catLabel(c)}</div><div className="text-[10.5px] text-fg-3">{c.group}{c.reason ? ` · ${c.reason}` : ''}</div></div>
-                      <div className="text-right font-mono text-[11px] tabular"><div className={c.status === 'mismatch' ? 'text-bad' : ''}>{c.n ?? '–'}/{c.N ?? '–'}</div><div className="text-fg-3">ref {c.ref_n ?? '–'}/{c.ref_N ?? '–'}</div></div>
+                      <div className="text-right font-mono text-[11px] tabular"><div className={c.status === 'mismatch' ? 'text-bad' : ''}>{c.n ?? '–'}/{c.N ?? '–'}{c.code?.startsWith('pct') ? ` · ${Number.isFinite(Number(c.pct)) && c.pct !== null && c.pct !== '' ? Number(c.pct).toFixed(2) : String(c.pct ?? '–')}%` : ''}</div><div className="text-fg-3">ref {c.ref_n ?? '–'}/{c.ref_N ?? '–'}{c.code?.startsWith('pct') && c.ref_pct != null ? ` · ${fmtPct(c.ref_pct)}%` : ''}</div></div>
                       <Tip content="Trace lineage"><Button size="iconsm" variant="ghost" onClick={() => onTrace({ table_id: t.table_id, level: c.level, soc: c.soc, pt: c.pt, group: c.group, n: c.n, N: c.N })}><Target /></Button></Tip>
                     </div>
                   ))}
@@ -467,14 +471,15 @@ function SignOff({ wid, ws }: { wid: string; ws: WorkspaceState }) {
   const [name, setName] = useState(() => { try { return localStorage.getItem('tp-reviewer') ?? '' } catch { return '' } })
   const [note, setNote] = useState('')
   const [ack, setAck] = useState(false)
-  const mismatches = val?.tables.reduce((a, t) => a + t.mismatch, 0) ?? 0
-  const verified = val?.tables.some(t => t.status !== 'not_verified')
-  const canApprove = run.status === 'succeeded' && verified && mismatches === 0 && ack && name.trim()
+  void val
+  const vs = ws.snap?.verification
+  const current = vs?.state === 'verified' && vs.run_id === run.id  // the server enforces the same rule
+  const canApprove = current && ack && name.trim()
   const mine = (ws.snap?.approvals ?? []).filter(a => a.run_id === run.id)
   const submit = async (decision: 'approved' | 'changes_requested') => {
     try {
       try { localStorage.setItem('tp-reviewer', name) } catch { /* storage unavailable */ }
-      await api.signoff(wid, { run_id: run.id, reviewer: name, decision, note })
+      await api.signoff(wid, { run_id: run.id, reviewer: name, decision, note, confirmed: ack })
       toast.success(decision === 'approved' ? 'Signed off' : 'Changes requested')
       setNote(''); setAck(false)
     } catch (e) { toast.error(String((e as Error).message)) }
@@ -498,8 +503,40 @@ function SignOff({ wid, ws }: { wid: string; ws: WorkspaceState }) {
           <Button size="sm" variant="outline" disabled={!name.trim()} onClick={() => submit('changes_requested')}>Request changes</Button>
           <Button size="sm" variant="ok" className="flex-1" disabled={!canApprove} onClick={() => submit('approved')}>Sign off program v{run.program_version}</Button>
         </div>
-        {!canApprove && <div className="text-[10.5px] text-fg-3">{run.status !== 'succeeded' ? 'The run did not succeed.' : !verified ? 'No verified table in this run.' : mismatches ? `${mismatches} mismatches must be resolved first.` : !name.trim() ? 'Enter your name.' : !ack ? 'Confirm your review.' : ''}</div>}
+        {!canApprove && <div className="text-[10.5px] text-fg-3">{!current ? `Sign-off needs a current, verified result. Now: ${STATE_LABEL[vs?.state ?? 'not_verified']}${vs?.reasons.length ? ` (${vs.reasons.join('; ')})` : ''}.` : !name.trim() ? 'Enter your name.' : !ack ? 'Confirm your review.' : ''}</div>}
       </div>
+    </div>
+  )
+}
+
+const STATE_LABEL: Record<VerificationState['state'], string> = {
+  verified: 'Verified', failed: 'Failed', not_verified: 'Not verified', stale: 'Verification stale', in_progress: 'Verification in progress',
+}
+
+function StateBadge({ v }: { v: VerificationState }) {
+  const tone = v.state === 'verified' ? 'ok' : v.state === 'failed' ? 'bad' : v.state === 'stale' ? 'warn' : 'outline'
+  return <Badge tone={tone}>{STATE_LABEL[v.state]}</Badge>
+}
+
+function StateMark({ v, mismatches }: { v?: VerificationState; mismatches: number }) {
+  if (!v) return null
+  if (v.state === 'verified') return <CircleCheck className="!size-3 text-ok" />
+  if (v.state === 'failed') return <Badge tone="bad" className="h-4 px-1.5">{mismatches || '!'}</Badge>
+  if (v.state === 'stale') return <Clock className="!size-3 text-warn" />
+  if (v.state === 'in_progress') return <Loader2 className="!size-3 animate-spin text-fg-3" />
+  return null
+}
+
+function StateBanner({ v }: { v: VerificationState }) {
+  const tone = v.state === 'verified' ? 'border-ok/25 bg-ok-soft/50 text-ok' : v.state === 'failed' ? 'border-bad/30 bg-bad-soft/50 text-bad'
+    : v.state === 'stale' ? 'border-warn/30 bg-warn-soft/50 text-warn' : 'border-line bg-surface-2 text-fg-2'
+  const icon = v.state === 'verified' ? <CircleCheck className="size-3.5" /> : v.state === 'failed' ? <CircleX className="size-3.5" />
+    : v.state === 'stale' ? <Clock className="size-3.5" /> : v.state === 'in_progress' ? <Loader2 className="size-3.5 animate-spin" /> : <CircleDashed className="size-3.5" />
+  return (
+    <div className={cn('rounded-lg border px-3 py-2 text-[11.5px]', tone)}>
+      <div className="flex items-center gap-1.5 font-semibold">{icon}{STATE_LABEL[v.state]}</div>
+      {v.state === 'stale' && <div className="mt-0.5 text-fg-2">This result is from an earlier version and is kept as history; it is not the current result. Run the program again to verify the current version.</div>}
+      {v.reasons.length > 0 && <ul className="mt-0.5 text-fg-2">{v.reasons.map(r => <li key={r}>{r}</li>)}</ul>}
     </div>
   )
 }
@@ -520,7 +557,7 @@ function Lineage({ ws, send, onReveal }: { ws: WorkspaceState; send: Send; onRev
     ['Denominator', <><span className="font-mono font-semibold">N = {r.N}</span><div className="text-fg-3">{t.denominator}</div></>],
     ['Events counted', <span className="font-mono">{t.event_filter!.join(' & ') || 'all records'}</span>],
     ['Numerator', <><span className="font-mono font-semibold">n = {r.n}</span> <span className="text-fg-3">from {r.record_count} event record{r.record_count === 1 ? '' : 's'}</span><div className="text-fg-3">{t.numerator}</div></>],
-    ['Calculation', <span className="font-mono">{r.n} / {r.N} × 100 = {fmtPct(pct(r.n, r.N))}%</span>],
+    ['Calculation', <><span className="font-mono">reference {r.n} / {r.N} × 100 = {fmtPct(pct(r.n, r.N))}%</span><div className="text-fg-3">program emitted {emitted(t.program_value as Record<string, unknown>) == null ? 'no percentage' : `${fmtPct(emitted(t.program_value as Record<string, unknown>))}%`}</div></>],
   ] : []
   return (
     <div className="space-y-3 p-3">

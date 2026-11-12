@@ -6,23 +6,25 @@ export type Cond = { var: string; op: string; value?: unknown }
 export type Spec = {
   type: string; title?: string; datasets: { subject: string; events: string }; subject_id?: string
   population?: Cond[]; treatment_var: string; event_filter?: Cond[]; soc_var: string; pt_var: string; include_total?: boolean
+  percent?: { required?: boolean; decimals?: number }; zero_cells?: 'optional' | 'required'; uncoded?: { handling: 'label' | 'exclude'; label?: string }
 }
 export type SpecRow = { version: number; spec: Spec; status: 'proposed' | 'approved' | 'rejected' | 'superseded'; rationale: string; proposed_by: string; decided_by: string | null; created_at: number; decided_at: number | null }
 export type Table = { id: string; title: string; type: string; columns: string[]; rows: Record<string, unknown>[] }
 export type RunError = { ok: false; kind: string; message: string; line?: number | null; end_line?: number | null }
 export type Run = { id: string; program_version: number; status: string; started: number; ended: number; console: string; result: Record<string, unknown> & { warnings?: { line: number; end_line: number; message: string }[] }; tables: Table[]; provenance: { program_sha256: string; datasets: Record<string, string>; backend: string; isolation?: string; r_version?: string; packages?: Record<string, string> } }
-export type Cell = { level: string; soc: string | null; pt: string | null; group: string; n: number | null; N: number | null; ref_n?: number | null; ref_N?: number | null; status: 'passed' | 'mismatch' | 'not_verified'; reason?: string | null }
+export type Cell = { level: string; soc: string | null; pt: string | null; group: string; n: number | null; N: number | null; pct?: unknown; ref_n?: number | null; ref_N?: number | null; ref_pct?: number | null; status: 'passed' | 'mismatch' | 'not_verified'; code?: string | null; reason?: string | null }
 export type TableValidation = { table_id: string; status: 'passed' | 'mismatch' | 'not_verified'; passed: number; mismatch: number; not_verified: number; cells: Cell[]; reason?: string; groups?: string[]; population_n?: number; pattern?: string[] }
 export type Validation = { validation_id: string; run_id: string; spec_version: number | null; program_version: number; tables: TableValidation[] }
-export type Approval = { id: string; run_id: string; validation_id: string | null; reviewer: string; decision: string; note: string; created_at: number }
+export type Approval = { id: string; run_id: string; validation_id: string | null; reviewer: string; decision: string; note: string; created_at: number; evidence?: { verification_state: string; spec_version: number | null; program_version: number } | null }
+export type VerificationState = { state: 'verified' | 'failed' | 'not_verified' | 'stale' | 'in_progress'; reasons: string[]; run_id: string | null; validation_id: string | null; program_version?: number; spec_version?: number | null }
 export type Snapshot = {
   workspace: { id: string; name: string; created_at: number }
   datasets: Dataset[]; program: Program | null; programs: Omit<Program, 'code'>[]; specs: SpecRow[]
-  run: Run | null; validation: Validation | null; approvals: Approval[]; agent_busy: boolean; last_event: number
+  run: Run | null; validation: Validation | null; approvals: Approval[]; verification?: VerificationState; agent_busy: boolean; last_event: number
 }
 export type Trace = {
   run_id: string; table_id: string; program_version: number; cell: { level: string; soc: string | null; pt: string | null; group: string }
-  program_value: { n: unknown; N: unknown } | null; note?: string; spec_version?: number
+  program_value: { n: unknown; N: unknown; pct?: unknown } | null; note?: string; spec_version?: number
   source?: { subject: string; events: string }; population?: string[]; group?: string; event_filter?: string[]
   numerator?: string; denominator?: string
   reference: { n: number; N: number; subjects: string[]; record_count: number } | null
@@ -70,7 +72,7 @@ export const api = {
   userSpec: (id: string, spec: Spec, rationale: string) => req('POST', `${w(id)}/specs`, { spec, rationale }),
   decide: (id: string, v: number, decision: 'approve' | 'reject', note = '') => req('POST', `${w(id)}/specs/${v}/decision`, { decision, note }),
   message: (id: string, text: string, context?: Record<string, unknown>) => req('POST', `${w(id)}/messages`, { text, context }),
-  signoff: (id: string, b: { run_id: string; reviewer: string; decision: string; note: string }) => req('POST', `${w(id)}/signoff`, b),
+  signoff: (id: string, b: { run_id: string; reviewer: string; decision: string; note: string; confirmed: boolean }) => req('POST', `${w(id)}/signoff`, b),
   exportUrl: (id: string, runId?: string) => `${w(id)}/export${runId ? `?run_id=${runId}` : ''}`,
   eventsUrl: (id: string, after = 0) => `${w(id)}/events?after=${after}`,
 }
