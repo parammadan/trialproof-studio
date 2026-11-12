@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 import traceback
@@ -18,7 +19,9 @@ from .studio import Studio, unified_diff
 
 MAX_STEPS = 14
 MAX_CALLS = 4  # tool calls run per model step
-CONTEXT_CHARS = 60000  # ~17k tokens of history, leaving room for the system prompt and output
+# ~17k tokens of history by default, leaving room for the system prompt and output; set lower for hosts with small
+# per-request token caps (the public demo uses 12000 for an 8k-token limit)
+CONTEXT_CHARS = int(os.environ.get("TP_CONTEXT_CHARS", 60000))
 
 SYSTEM = """You are the AI statistical programmer inside TrialProof Studio, working with a human statistical programmer on clinical-trial analysis datasets (CDISC ADaM and others) in R.
 

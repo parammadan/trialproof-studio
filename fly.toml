@@ -9,6 +9,9 @@ primary_region = "iad"
 [env]
   TP_LLM_BASE_URL = "https://api.groq.com/openai/v1"
   TP_LLM_MODEL = "openai/gpt-oss-120b"
+  # Groq free tier: 8k tokens per request and per minute
+  TP_CONTEXT_CHARS = "12000"
+  TP_LLM_MAX_TOKENS = "2048"
 
 [http_service]
   internal_port = 7860

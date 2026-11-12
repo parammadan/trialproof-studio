@@ -32,6 +32,7 @@ class LLMConfig:
             model=saved.get("model") or os.environ.get("TP_LLM_MODEL", ""),
             api_key=saved.get("api_key") or os.environ.get("TP_LLM_API_KEY", ""),
             temperature=float(saved.get("temperature", os.environ.get("TP_LLM_TEMPERATURE", 0.2))),
+            max_tokens=int(os.environ.get("TP_LLM_MAX_TOKENS", 3072)),
         )
 
     @property
