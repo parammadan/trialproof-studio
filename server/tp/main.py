@@ -140,7 +140,7 @@ def health():
     iso = studio.ex.isolation
     return {"r": R_VERSION, "executor": BACKEND, "isolation": backend_label(), "public": PUBLIC,
             "execution": {"enabled": studio.ex.allowed(), "self_test": iso["status"], "verified": iso["verified"],
-                          "checks": {k: c["ok"] for k, c in iso.get("checks", {}).items()}},
+                          "checks_passed": {k: c["ok"] for k, c in iso.get("checks", {}).items()}},
             "budgets": agent.budgets(),
             "llm": agent.config().public(),
             "acked_hosts": store.get_setting("acked_hosts", [])}

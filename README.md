@@ -17,7 +17,7 @@ independent verification can be run without the model. The machine stops when id
 ```sh
 # backend (Python 3.12+, R 4.x with dplyr, tidyr, haven, readr, jsonlite)
 cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn tp.main:app --port 8765
+.venv/bin/uvicorn tp.main:app --port 8765 --no-proxy-headers
 
 # frontend
 cd web && npm install && npm run dev          # http://localhost:5173
@@ -62,6 +62,11 @@ confirmation.
 - The first request to a new model host asks you to authorize what is sent: column metadata, value counts, code,
   console output and result previews. Whole datasets are never sent.
 - Runs can be cancelled, they time out at 120 s, and their errors carry line ranges.
+- R runs in a sandbox (bubblewrap namespaces on Linux, `sandbox-exec` on macOS) with CPU, memory, output and process
+  limits, and only after a startup self-test has shown, inside the sandbox, that a program cannot read the database,
+  the source, another workspace, the server's environment or the network. If the self-test fails, R execution is off.
+- Workspaces belong to the browser session that created them; other sessions get 404. Public mode adds per-address and
+  per-session rate limits and daily model budgets. Details, verification commands and key rotation: `docs/SECURITY.md`.
 
 **Verification scope.** The independent engine covers TEAE incidence summaries (`type = "teae_summary"`): subjects
 with ≥1 event overall, by SOC and by SOC/PT, per treatment group, with population denominators from the subject-level
