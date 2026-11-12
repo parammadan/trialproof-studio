@@ -22,7 +22,7 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
   const [list, setList] = useState<WS[] | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState<'upload' | 'pilot' | null>(null)
+  const [busy, setBusy] = useState<'upload' | 'pilot' | 'example' | null>(null)
 
   useEffect(() => {
     api.workspaces().then(setList).catch(() => setList([]))
@@ -49,6 +49,18 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
     try {
       const ws = await api.createWorkspace(name || 'CDISC pilot · TEAE summary')
       await api.pilot(ws.id)
+      onOpen(ws.id)
+    } catch (e) {
+      toast.error(String((e as Error).message))
+    } finally { setBusy(null) }
+  }
+
+  const example = async () => {
+    setBusy('example')
+    try {
+      const ws = await api.createWorkspace(name || 'CDISC pilot · worked example')
+      await api.example(ws.id)
+      toast.success('Example loaded: press Run to execute it and verify every cell')
       onOpen(ws.id)
     } catch (e) {
       toast.error(String((e as Error).message))
@@ -130,6 +142,10 @@ export default function Welcome({ onOpen, theme, toggleTheme }: { onOpen: (id: s
               <Button variant="primary" size="md" className="w-full" onClick={pilot} disabled={!!busy}>
                 {busy === 'pilot' ? <><Spinner /> Loading and parsing…</> : <>Open pilot workspace <ArrowRight /></>}
               </Button>
+              <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={example} disabled={!!busy}>
+                {busy === 'example' ? <><Spinner /> Loading the example…</> : <>Or open the worked example (no AI needed)</>}
+              </Button>
+              <p className="mt-1.5 text-center text-[10.5px] leading-snug text-fg-3">An approved spec and a hand-written R program, so you can run the independent verification yourself.</p>
             </div>
           </div>
         </motion.section>

@@ -56,6 +56,7 @@ export const api = {
   snapshot: (id: string) => req<Snapshot>('GET', w(id)),
   upload: (id: string, files: File[]) => { const f = new FormData(); files.forEach(x => f.append('files', x)); return req<{ datasets: Dataset[]; errors: { file: string; error: string }[] }>('POST', `${w(id)}/datasets`, f) },
   pilot: (id: string) => req<{ datasets: Dataset[] }>('POST', `${w(id)}/datasets/pilot`),
+  example: (id: string) => req<{ program: Program }>('POST', `${w(id)}/example`),
   profile: (id: string, name: string) => req<Profile>('GET', `${w(id)}/datasets/${name}/profile`),
   rows: (id: string, name: string, offset = 0, limit = 100) => req<{ total: number; rows: Record<string, string>[] }>('GET', `${w(id)}/datasets/${name}/rows?offset=${offset}&limit=${limit}`),
   relationships: (id: string) => req<Relationship[]>('GET', `${w(id)}/relationships`),

@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import example as ex
 from . import datasets as dsets
 from .agent import Agent
 from .bus import Bus
@@ -304,6 +305,18 @@ def decide(wid: str, version: int, b: Decision):
         return studio.decide_spec(wid, version, b.decision, b.note)
     except ValueError as e:
         bad(e)
+
+
+@app.post("/api/workspaces/{wid}/example")
+async def example(wid: str):
+    """Load the pilot data (if needed), then the built-in example spec (approved) and program, marked as the example."""
+    ws_or_404(wid)
+    if not {"ADSL", "ADAE"} <= {d["name"] for d in store.q("select name from datasets where ws_id=?", (wid,))}:
+        await pilot(wid)
+    r = studio.propose_spec(wid, ex.SPEC, "Built-in example specification (written by hand, not by the agent)", by="user")
+    if not r["ok"]:
+        raise HTTPException(400, "; ".join(r["problems"]))
+    return {"spec": r, "program": studio.save_program(wid, ex.TEAE_R, "example", "built-in example program (written by hand, not by the agent)")}
 
 
 # ---------- agent ----------
